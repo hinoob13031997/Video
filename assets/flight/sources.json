@@ -1,0 +1,37 @@
+[
+  {
+    "file": "assets/flight/earth.jpg",
+    "source_url": "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg",
+    "sha256": "2faa400d1eade3bc44caf6750d1b772bd9bbb6d87362c02bc7c3304e78fa0a9d"
+  },
+  {
+    "file": "assets/flight/moon.jpg",
+    "source_url": "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/moon_1024.jpg",
+    "sha256": "fcb0f1f5548e6e18d40063dd55c6aacd3daedf2407b181dab85b61e22bf9fe57"
+  },
+  {
+    "file": "assets/flight/saturn.png",
+    "source": "Generated for the Moonvit reference-based 3D flight",
+    "sha256": "05d2ef8a9a6fa820fcd7240b19d951c3cfa941df910ca5108664a6ced72962b1"
+  },
+  {
+    "file": "assets/flight/venus.png",
+    "source": "Generated for the Moonvit reference-based 3D flight",
+    "sha256": "bbde20b7ca0f1f2a198dcdc0aec0b33cf3cf6cae57e9ca9af1fb5a2a65495276"
+  },
+  {
+    "file": "assets/flight/mars.png",
+    "source": "Generated for the Moonvit reference-based 3D flight",
+    "sha256": "ddb7d7f9525c07ec6b07a02963bcc2bf33ccad5dd20d09c13122391109dfa8f8"
+  },
+  {
+    "file": "assets/flight/neptune.png",
+    "source": "Generated for the Moonvit reference-based 3D flight",
+    "sha256": "3af6635186c3ff5932d802b64646d27299ec49798d6c1f603c17263cd9683296"
+  },
+  {
+    "file": "assets/flight/sky.png",
+    "source": "Generated for the Moonvit reference-based 3D flight",
+    "sha256": "1aba781c42c532282da0c3c11a6af3fe49b5937071f37c390eb32b63706b7535"
+  }
+]

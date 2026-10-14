@@ -11,6 +11,8 @@ let activeChapter = -1;
 let chapterDistance = 1;
 let journeyStart = 0;
 let lastFocused;
+let flightScene = null;
+let flightLoading = false;
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const smooth = value => value * value * (3 - 2 * value);
 const worldPreloads = new Map();
@@ -46,19 +48,24 @@ function draw() {
     chapter.style.visibility = opacity > 0 ? 'visible' : 'hidden';
     if (opacity > 0) {
       const phase = i === index ? fraction : 0;
-      const entrance = reducedMotion.matches ? 1 : smooth(clamp((phase - 0.14) / 0.28));
+      const entrance = reducedMotion.matches ? 1 : smooth(clamp((phase - 0.22) / 0.33));
+      const copy = i === 0 && cursor < .18 ? 0 : reducedMotion.matches ? 1 : smooth(clamp((phase - 0.49) / 0.1)) * (1 - smooth(clamp((phase - 0.76) / 0.05)));
+      const approach = smooth(clamp(phase / 0.55));
+      const cameraDepth = 15 - 17 * approach;
+      const productDepth = -24 + 18 * entrance;
+      const perspectiveScale = Math.min(1.05, 4 / Math.max(.1, cameraDepth - productDepth));
       chapter.style.setProperty('--world', `url("${products[i].world}")`);
-      chapter.style.setProperty('--planet-scale', reducedMotion.matches ? 1 : 1.01 + phase * 0.12);
+      chapter.style.setProperty('--planet-scale', reducedMotion.matches ? 1 : 1.01 + approach * .55);
       chapter.style.setProperty('--world-x', `${reducedMotion.matches ? 0 : -phase * 24}px`);
-      chapter.style.setProperty('--jar-scale', reducedMotion.matches ? 1 : 0.56 + entrance * 0.44);
-      chapter.style.setProperty('--jar-y', `${reducedMotion.matches ? 0 : 160 * (1 - entrance)}px`);
-      chapter.style.setProperty('--jar-opacity', entrance);
-      chapter.style.setProperty('--copy-opacity', entrance);
-      chapter.style.setProperty('--copy-y', `${reducedMotion.matches ? 0 : 24 * (1 - entrance)}px`);
-      chapter.style.setProperty('--approach-opacity', 1 - entrance);
+      chapter.style.setProperty('--jar-scale', reducedMotion.matches ? 1 : perspectiveScale);
+      chapter.style.setProperty('--jar-y', `${reducedMotion.matches ? 0 : 35 * (1 - entrance)}px`);
+      chapter.style.setProperty('--jar-opacity', reducedMotion.matches ? 1 : smooth(clamp((phase - .22) / .12)) * (1 - smooth(clamp((phase - .76) / .07))));
+      chapter.style.setProperty('--copy-opacity', copy);
+      chapter.style.setProperty('--copy-y', `${reducedMotion.matches ? 0 : 18 * (1 - copy)}px`);
+      chapter.style.setProperty('--approach-opacity', reducedMotion.matches || (i === 0 && cursor < .18) ? 0 : 1 - smooth(clamp((phase - .19) / .12)));
       chapter.style.setProperty('--flyby-opacity', Math.sin(clamp((phase - 0.72) / 0.28) * Math.PI));
       chapter.style.setProperty('--flyby-x', `${-35 + clamp((phase - 0.72) / 0.28) * 130}vw`);
-      chapter.querySelector('.chapter-copy').inert = entrance < 0.05;
+      chapter.querySelector('.chapter-copy').inert = copy < 0.05;
     }
   });
 
@@ -75,7 +82,14 @@ function draw() {
     document.querySelector('#chapter-count').textContent = `0${visibleIndex + 1} / 06`;
   }
   document.querySelector('#journey-progress').style.transform = `scaleX(${progress})`;
-  const heroProgress = clamp(scrollY / innerHeight);
+  if (flightScene && !reducedMotion.matches) flightScene.render(cursor);
+  const heroProgress = clamp(cursor / .18);
+  const intro = document.querySelector('#flight-intro');
+  const introOpacity = reducedMotion.matches ? (cursor < .18 ? 1 : 0) : 1 - smooth(heroProgress);
+  intro.style.opacity = introOpacity;
+  intro.style.visibility = introOpacity > 0 ? 'visible' : 'hidden';
+  intro.inert = introOpacity < .05;
+  intro.setAttribute('aria-hidden', String(introOpacity < .05));
   if (!reducedMotion.matches) {
     document.querySelector('.opening-background').style.transform = `scale(${1.01 + heroProgress * 0.15})`;
     document.querySelector('.opening-copy').style.transform = `translateY(${-heroProgress * 60}px)`;
@@ -88,9 +102,29 @@ function requestFrame() {
 }
 addEventListener('scroll', requestFrame, {passive: true});
 addEventListener('resize', measure);
-reducedMotion.addEventListener('change', requestFrame);
+async function startFlight() {
+  if (flightScene || flightLoading || reducedMotion.matches) return;
+  flightLoading = true;
+  try {
+    const module = await import('./flight.js?v=flight-20261014');
+    const created = await module.createFlight(stage, products);
+    if (reducedMotion.matches) created?.dispose();
+    else flightScene = created;
+  } catch {
+    // The complete CSS journey remains available if WebGL cannot start.
+  } finally { flightLoading = false; requestFrame(); }
+}
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches && flightScene) { flightScene.dispose(); flightScene = null; }
+  else startFlight();
+  requestFrame();
+});
 navigation.forEach(button => button.addEventListener('click', () => {
-  scrollTo({top: journeyStart + (Number(button.dataset.scene) + 0.52) * chapterDistance, behavior: reducedMotion.matches ? 'instant' : 'smooth'});
+  scrollTo({top: journeyStart + (Number(button.dataset.scene) + 0.64) * chapterDistance, behavior: reducedMotion.matches ? 'instant' : 'smooth'});
+}));
+document.querySelectorAll('[data-begin-flight]').forEach(link => link.addEventListener('click', event => {
+  event.preventDefault();
+  scrollTo({top:journeyStart + .64 * chapterDistance, behavior:reducedMotion.matches ? 'instant' : 'smooth'});
 }));
 
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {
@@ -142,3 +176,4 @@ const observer = new IntersectionObserver(entries => {
 }, {threshold:0.12});
 document.querySelectorAll('.reveal').forEach(element => observer.observe(element));
 measure();
+startFlight();

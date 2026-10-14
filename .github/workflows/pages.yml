@@ -28,7 +28,7 @@ jobs:
       - name: Prepare static website
         run: |
           mkdir -p _site
-          cp index.html cinematic.css cinematic.js scenes.html video.html scenes.css scenes.js style.css app.js _site/
+          cp index.html cinematic.css cinematic.js flight.js scenes.html video.html scenes.css scenes.js style.css app.js _site/
           cp -R assets _site/assets
           touch _site/.nojekyll
       - name: Upload website
