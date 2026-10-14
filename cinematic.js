@@ -13,6 +13,13 @@ let journeyStart = 0;
 let lastFocused;
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const smooth = value => value * value * (3 - 2 * value);
+const worldPreloads = new Map();
+function preloadWorld(index) {
+  if (index < 0 || index >= products.length || worldPreloads.has(index)) return;
+  const image = new Image();
+  image.src = products[index].world;
+  worldPreloads.set(index, image);
+}
 
 function measure() {
   journeyStart = journey.getBoundingClientRect().top + scrollY;
@@ -29,6 +36,8 @@ function draw() {
   const fraction = cursor - index;
   const blend = reducedMotion.matches ? 0 : smooth(clamp((fraction - 0.78) / 0.22));
   const visibleIndex = blend > 0.5 && index < chapters.length - 1 ? index + 1 : index;
+  preloadWorld(index);
+  preloadWorld(index + 1);
 
   chapters.forEach((chapter, i) => {
     const incoming = i === index + 1 && index < chapters.length - 1;
@@ -37,11 +46,19 @@ function draw() {
     chapter.style.visibility = opacity > 0 ? 'visible' : 'hidden';
     if (opacity > 0) {
       const phase = i === index ? fraction : 0;
-      const entrance = reducedMotion.matches ? 1 : smooth(clamp(phase / 0.28));
-      chapter.style.setProperty('--planet-scale', reducedMotion.matches ? 1 : 1.01 + phase * 0.09);
-      chapter.style.setProperty('--jar-scale', reducedMotion.matches ? 1 : 0.88 + entrance * 0.12);
-      chapter.style.setProperty('--jar-y', `${reducedMotion.matches ? 0 : 42 * (1 - entrance) - phase * 10}px`);
-      chapter.style.setProperty('--copy-y', `${reducedMotion.matches ? 0 : -phase * 14}px`);
+      const entrance = reducedMotion.matches ? 1 : smooth(clamp((phase - 0.14) / 0.28));
+      chapter.style.setProperty('--world', `url("${products[i].world}")`);
+      chapter.style.setProperty('--planet-scale', reducedMotion.matches ? 1 : 1.01 + phase * 0.12);
+      chapter.style.setProperty('--world-x', `${reducedMotion.matches ? 0 : -phase * 24}px`);
+      chapter.style.setProperty('--jar-scale', reducedMotion.matches ? 1 : 0.56 + entrance * 0.44);
+      chapter.style.setProperty('--jar-y', `${reducedMotion.matches ? 0 : 160 * (1 - entrance)}px`);
+      chapter.style.setProperty('--jar-opacity', entrance);
+      chapter.style.setProperty('--copy-opacity', entrance);
+      chapter.style.setProperty('--copy-y', `${reducedMotion.matches ? 0 : 24 * (1 - entrance)}px`);
+      chapter.style.setProperty('--approach-opacity', 1 - entrance);
+      chapter.style.setProperty('--flyby-opacity', Math.sin(clamp((phase - 0.72) / 0.28) * Math.PI));
+      chapter.style.setProperty('--flyby-x', `${-35 + clamp((phase - 0.72) / 0.28) * 130}vw`);
+      chapter.querySelector('.chapter-copy').inert = entrance < 0.05;
     }
   });
 
@@ -59,9 +76,10 @@ function draw() {
   }
   document.querySelector('#journey-progress').style.transform = `scaleX(${progress})`;
   const heroProgress = clamp(scrollY / innerHeight);
-  if (heroProgress < 1 && !reducedMotion.matches) {
-    document.querySelector('.opening-background').style.transform = `translate(-50%, -50%) scale(${1.04 + heroProgress * 0.09})`;
+  if (!reducedMotion.matches) {
+    document.querySelector('.opening-background').style.transform = `scale(${1.01 + heroProgress * 0.15})`;
     document.querySelector('.opening-copy').style.transform = `translateY(${-heroProgress * 60}px)`;
+    document.querySelector('.opening-copy').style.opacity = 1 - smooth(clamp(heroProgress * 1.5));
   }
 }
 
@@ -72,7 +90,7 @@ addEventListener('scroll', requestFrame, {passive: true});
 addEventListener('resize', measure);
 reducedMotion.addEventListener('change', requestFrame);
 navigation.forEach(button => button.addEventListener('click', () => {
-  scrollTo({top: journeyStart + (Number(button.dataset.scene) + 0.32) * chapterDistance, behavior: reducedMotion.matches ? 'instant' : 'smooth'});
+  scrollTo({top: journeyStart + (Number(button.dataset.scene) + 0.52) * chapterDistance, behavior: reducedMotion.matches ? 'instant' : 'smooth'});
 }));
 
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {
@@ -97,8 +115,10 @@ function openProduct(index, trigger) {
   document.querySelector('#detail-description').textContent = product.description;
   document.querySelector('#detail-flavor').textContent = `Вкус / ${product.flavor}`;
   const jar = document.querySelector('#detail-jar');
-  jar.style.setProperty('--cell', product.position);
-  jar.setAttribute('aria-label', `Концептуальная упаковка Moonvit ${product.name}`);
+  jar.style.cssText = product.photoStyle;
+  const photo = document.querySelector('#detail-photo');
+  photo.src = product.photo;
+  photo.alt = `Оригинальная упаковка Moonvit — ${product.title}`;
   document.querySelector('.detail-art').style.setProperty('--accent', product.accent);
   const ingredients = product.ingredients.map(ingredient => {
     const item = document.createElement('li'); item.textContent = ingredient; return item;

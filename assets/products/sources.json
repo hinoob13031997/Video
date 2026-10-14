@@ -1,0 +1,44 @@
+[
+  {
+    "series": "mars",
+    "original_url": "https://static.tildacdn.com/stor3138-3339-4030-b461-653837373064/04f21114fdde58ccb546a3523e4a0b5f.png",
+    "download_url": "https://optim.tildacdn.com/stor3138-3339-4030-b461-653837373064/04f21114fdde58ccb546a3523e4a0b5f.png",
+    "file": "assets/products/mars.png",
+    "sha256": "9e98d5a41b0e5bd1ad06bb4397a4350dc18a5d9da0d2eac32a32f38e9f648dac"
+  },
+  {
+    "series": "venus",
+    "original_url": "https://static.tildacdn.com/stor6631-6165-4439-a462-646239323566/be9ea23c932952111f9fa8e88786fe3f.png",
+    "download_url": "https://optim.tildacdn.com/stor6631-6165-4439-a462-646239323566/be9ea23c932952111f9fa8e88786fe3f.png",
+    "file": "assets/products/venus.png",
+    "sha256": "759d92e23fc529bd28d41863bd0876494abeb1a06cdfd2ce863b59cbdfe7c1ea"
+  },
+  {
+    "series": "saturn",
+    "original_url": "https://static.tildacdn.com/stor3231-3965-4461-a464-326562343836/89220fb5f533b33d25dd9a99cfb6b62c.png",
+    "download_url": "https://optim.tildacdn.com/stor3231-3965-4461-a464-326562343836/89220fb5f533b33d25dd9a99cfb6b62c.png",
+    "file": "assets/products/saturn.png",
+    "sha256": "df3febaaa6d322000300dae27167d3434fcad3808231749e1f6abe2982fa1087"
+  },
+  {
+    "series": "earth",
+    "original_url": "https://static.tildacdn.com/stor3061-6261-4137-b638-396630383136/a23ea9850a44229300916c1fdc01197e.png",
+    "download_url": "https://optim.tildacdn.com/stor3061-6261-4137-b638-396630383136/a23ea9850a44229300916c1fdc01197e.png",
+    "file": "assets/products/earth.png",
+    "sha256": "b5031d4ba321b2696e17cbe6773a2f641fb4a69e1c98d5932737a90bec6a0a6d"
+  },
+  {
+    "series": "neptune",
+    "original_url": "https://static.tildacdn.com/stor6432-6434-4736-a635-616463666539/2d867ee3c6da783be0ab55f0fcc6fd3b.png",
+    "download_url": "https://optim.tildacdn.com/stor6432-6434-4736-a635-616463666539/2d867ee3c6da783be0ab55f0fcc6fd3b.png",
+    "file": "assets/products/neptune.png",
+    "sha256": "6ceec6bbdb69cacdf3651fc2f8649247a6ffbd5c65c833868d3c1dd1a2f6130a"
+  },
+  {
+    "series": "moon",
+    "original_url": "https://static.tildacdn.com/stor3464-3961-4133-b865-616138643931/2101fe0e7199edb5c8bc7e7cdb9e1211.png",
+    "download_url": "https://optim.tildacdn.com/stor3464-3961-4133-b865-616138643931/2101fe0e7199edb5c8bc7e7cdb9e1211.png",
+    "file": "assets/products/moon.png",
+    "sha256": "ed1fc520f149fe5536a2147a61356e9b8936e3f130eb9ba9051bb0e1b971cea8"
+  }
+]
