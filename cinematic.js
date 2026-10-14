@@ -34,6 +34,7 @@ function draw() {
   frameRequested = false;
   header.classList.toggle('scrolled', scrollY > 50);
   const progress = clamp((scrollY - journeyStart) / (chapterDistance * chapters.length));
+  header.classList.toggle('over-flight', scrollY < journeyStart + chapterDistance * chapters.length);
   const cursor = Math.min(progress * chapters.length, chapters.length - 0.001);
   const index = Math.floor(cursor);
   const fraction = cursor - index;
@@ -110,7 +111,7 @@ async function startFlight() {
   if (flightScene || flightLoading || reducedMotion.matches) return;
   flightLoading = true;
   try {
-    const module = await import('./flight.js?v=models-20261014');
+    const module = await import('./flight.js?v=reference-20261014');
     const created = await module.createFlight(stage, products);
     if (reducedMotion.matches) created?.dispose();
     else flightScene = created;

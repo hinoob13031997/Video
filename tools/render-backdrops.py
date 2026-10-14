@@ -14,7 +14,7 @@ with sync_playwright() as p:
  errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.goto('http://127.0.0.1:3000',wait_until='networkidle')
  page.wait_for_selector('.flight-ready')
- page.add_style_tag(content='.site-header,.cinema-stage>*:not(canvas),.skip-link{visibility:hidden!important}.cinema-stage{background:#02050a url(assets/flight/sky.png) center/cover no-repeat!important}')
+ page.add_style_tag(content='.site-header,.cinema-stage>*:not(canvas),.skip-link{visibility:hidden!important}')
  geom=page.evaluate('({start:document.querySelector("#journey").getBoundingClientRect().top+scrollY,step:(document.querySelector("#journey").offsetHeight-document.querySelector(".cinema-stage").offsetHeight)/6})')
  for i,name in enumerate(['moon','saturn','venus','mars','earth','neptune']):
   for suffix,phase in [('-approach',.20),('',.65)]:

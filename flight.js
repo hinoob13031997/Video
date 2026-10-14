@@ -1,15 +1,15 @@
 import * as THREE from './assets/vendor/three/three.module.js';
 
 // Original product PNGs remain untouched; only transparent margins are cropped for GPU upload.
-const textures = ['moon.jpg', 'saturn.png', 'venus.png', 'mars.png', 'earth.jpg', 'neptune.png'];
-// Art direction measured against the supplied video, rather than one light for every planet.
+const textures = ['moon', 'saturn', 'venus', 'mars', 'earth', 'neptune'];
+// Reference composition and light direction; lighting on the planets is baked into the cutouts.
 const worlds = [
-  {radius:12.3, light:[-.9,.35,.4], color:0xe1edff, rim:0x96bcff, tint:0xd9e0ec, landing:[.72,.27]},
-  {radius:13, light:[-.95,.3,.2], color:0xffedce, rim:0xffd8a0, tint:0xb8b1a2, landing:[.96,.18]},
-  {radius:12.5, light:[-.85,.45,.3], color:0xffe7df, rim:0xffd1d9, tint:0xedc6d1, landing:[.78,.30]},
-  {radius:13.4, light:[.9,.45,.15], color:0xffddaa, rim:0xffbb76, tint:0xce9d76, landing:[.78,.25]},
-  {radius:12.4, light:[-.9,.35,.35], color:0xdbedff, rim:0x8ec8ff, tint:0xd9eaff, landing:[.78,.28]},
-  {radius:13, light:[.95,.35,.18], color:0xd7eaff, rim:0x93caff, tint:0xb6c9ed, landing:[.77,.27]}
+  {radius:17, light:[.9,.35,.4], color:0xe1edff, landing:[.72,.27]},
+  {radius:14.5, light:[-.95,.3,.2], color:0xffedce, landing:[.94,.51]},
+  {radius:14.2, light:[-.85,.45,.3], color:0xffe7df, landing:[.78,.30]},
+  {radius:18, light:[.9,.45,.15], color:0xffddaa, landing:[.78,.25]},
+  {radius:18, light:[.9,.35,.35], color:0xdbedff, landing:[.78,.28]},
+  {radius:16, light:[.95,.35,.18], color:0xd7eaff, landing:[.77,.27]}
 ];
 const SECTOR = 100;
 const FOV = 50;
@@ -19,7 +19,6 @@ const finalProductZ = -6;
 const clamp = n => Math.max(0, Math.min(1, n));
 const ease = n => { n = clamp(n); return n * n * (3 - 2 * n); };
 const lerp = (a, b, t) => a + (b - a) * t;
-const point = new THREE.Vector3();
 
 function randomGenerator(seed) {
   return () => {
@@ -28,19 +27,6 @@ function randomGenerator(seed) {
     n ^= n + Math.imul(n ^ n >>> 7, 61 | n);
     return ((n ^ n >>> 14) >>> 0) / 4294967296;
   };
-}
-
-function makeRockGeometry() {
-  const geometry = new THREE.SphereGeometry(1, 16, 10);
-  const positions = geometry.attributes.position;
-  for (let i = 0; i < positions.count; i++) {
-    point.fromBufferAttribute(positions, i);
-    const roughness = 1 + 0.12 * Math.sin(point.x * 18 + point.y * 7) * Math.cos(point.z * 11);
-    point.multiplyScalar(roughness);
-    positions.setXYZ(i, point.x, point.y, point.z);
-  }
-  geometry.computeVertexNormals();
-  return geometry;
 }
 
 function makeTerrainGeometry() {
@@ -56,41 +42,22 @@ function makeTerrainGeometry() {
   return geometry;
 }
 
-function ringMaterial(innerRadius, outerRadius, radius) {
-  return new THREE.ShaderMaterial({
-    transparent: true, side: THREE.DoubleSide, depthWrite: false,
-    uniforms: { inner: {value: innerRadius}, outer: {value: outerRadius}, radius:{value:radius}, light:{value:new THREE.Vector3(-.95,.3,.2).normalize()} },
-    vertexShader: `varying vec3 ringPosition; varying vec3 planetPosition; void main(){ ringPosition=position; planetPosition=mat3(modelMatrix)*position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-    fragmentShader: `varying vec3 ringPosition; varying vec3 planetPosition; uniform float inner; uniform float outer; uniform float radius; uniform vec3 light;
-      void main(){ float r=length(ringPosition.xy); float t=(r-inner)/(outer-inner);
-      float fine=1.-smoothstep(.006,.03,fwidth(t));
-      float bands=.55+.17*sin(t*47.)+.12*sin(t*132.)+.09*sin(t*430.)*fine;
-      float gap=1.-smoothstep(.47,.48,t)*(1.-smoothstep(.505,.52,t));
-      float alpha=(.53+.38*bands)*gap*smoothstep(0.,.015,t)*(1.-smoothstep(.97,1.,t));
-      float along=dot(planetPosition,light); float distanceToRay=length(planetPosition-light*along);
-      float shadow=along<0. ? mix(.14,1.,smoothstep(radius*.97,radius*1.08,distanceToRay)) : 1.;
-      vec3 color=mix(vec3(.26,.17,.09),vec3(.79,.49,.22),bands)*shadow;
-      gl_FragColor=vec4(color,alpha);
-      #include <tonemapping_fragment>
-      #include <colorspace_fragment>
-      }`
+// View-facing photographic cutouts retain the reference's crater placement,
+// soft lighting and luminous limb while the camera moves through 3D space.
+function makePlanet(surface, index) {
+  const world = worlds[index];
+  const height = world.radius * 2.24;
+  const width = height * surface.image.width / surface.image.height;
+  const material = new THREE.MeshBasicMaterial({
+    map:surface, transparent:true, alphaTest:.012, depthWrite:true, toneMapped:false, fog:false
   });
-}
-
-function atmosphere(radius, color) {
-  return new THREE.Mesh(new THREE.SphereGeometry(radius * 1.025, 48, 32), new THREE.ShaderMaterial({
-    uniforms: {glow: {value: new THREE.Color(color)}}, transparent: true, depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    vertexShader: `varying vec3 n; varying vec3 v; void main(){ vec4 p=modelViewMatrix*vec4(position,1.); n=normalize(normalMatrix*normal); v=normalize(-p.xyz); gl_Position=projectionMatrix*p; }`,
-    fragmentShader: `uniform vec3 glow; varying vec3 n; varying vec3 v; void main(){ float rim=pow(1.-max(0.,dot(normalize(n),normalize(v))),4.5); gl_FragColor=vec4(glow,rim*.55); }`
-  }));
-}
-
-function planetMaterial(surface, index) {
-  const material = new THREE.MeshStandardMaterial({map:surface, color:worlds[index].tint, roughness:1, metalness:0});
-  if (index === 0 || index === 3) { material.bumpMap = surface; material.bumpScale = index === 0 ? .09 : .055; }
-
-  return material;
+  if (index !== 1) material.onBeforeCompile = shader => {
+    // Feather the reconstructed glow so isolated alpha flecks cannot form a hard fringe.
+    shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.a*=1.-smoothstep(.465,.495,length(vMapUv-vec2(.5)));');
+  };
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
+  mesh.userData.referencePlanet = textures[index];
+  return mesh;
 }
 
 export async function createFlight(stage, products) {
@@ -133,12 +100,10 @@ export async function createFlight(stage, products) {
   const stars = new THREE.Points(starsGeometry, new THREE.PointsMaterial({color: 0xd9e8ff, size: .18, transparent: true, opacity: .8, sizeAttenuation: true}));
   scene.add(stars);
 
-  const rockGeometry = makeRockGeometry();
   let rockMap;
   try { rockMap = await loader.loadAsync('assets/flight/moon.jpg'); }
-  catch { renderer.dispose(); rockGeometry.dispose(); starsGeometry.dispose(); stars.material.dispose(); return null; }
+  catch { renderer.dispose(); starsGeometry.dispose(); stars.material.dispose(); return null; }
   rockMap.colorSpace = THREE.SRGBColorSpace;
-  const rockMaterial = new THREE.MeshStandardMaterial({map:rockMap, color:0x726a60, roughness:1});
   const groundMap = rockMap.clone();
   groundMap.wrapS = groundMap.wrapT = THREE.RepeatWrapping;
   groundMap.repeat.set(7, 5);
@@ -147,44 +112,45 @@ export async function createFlight(stage, products) {
   const terrainMaterial = new THREE.MeshStandardMaterial({map:groundMap, bumpMap:groundMap, bumpScale:.16, color:0x62594b, roughness:1, transparent:true});
   resources.push(groundMap);
   resources.push(rockMap);
-  const asteroidCount = 220;
+  // Photo cutouts give the foreground stones the same natural detail as the video.
+  let asteroidMap;
+  try { asteroidMap = await loader.loadAsync('assets/planets/asteroids.png'); }
+  catch { renderer.dispose(); resources.forEach(texture=>texture.dispose()); terrainGeometry.dispose(); terrainMaterial.dispose(); starsGeometry.dispose(); stars.material.dispose(); return null; }
+  asteroidMap.colorSpace = THREE.SRGBColorSpace;
+  resources.push(asteroidMap);
+  const asteroidCount = 960;
+  const rockGeometry = new THREE.PlaneGeometry(1,1);
+  const tiles = new Float32Array(asteroidCount * 2);
+  const asteroidPoses = [];
+  const rockMaterial = new THREE.MeshBasicMaterial({map:asteroidMap, color:0xaab2b9, transparent:true, alphaTest:.04, depthWrite:true, toneMapped:false});
+  rockMaterial.onBeforeCompile = shader => {
+    shader.vertexShader = 'attribute vec2 asteroidTile;\n' + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\nvMapUv=(vMapUv+asteroidTile)*.5;');
+  };
   const asteroids = new THREE.InstancedMesh(rockGeometry, rockMaterial, asteroidCount);
   const transform = new THREE.Object3D();
-  for (let i = 0; i < asteroidCount; i++) {
-    const angle = random() * Math.PI * 2;
-    const radius = 4.8 + random() * 27;
-    transform.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 25 - random() * 680);
-    const size = .12 + random() ** 3 * 1.25;
-    transform.scale.set(size * (1 + random()), size, size * (.7 + random()));
-    transform.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
-    transform.updateMatrix();
-    asteroids.setMatrixAt(i, transform.matrix);
+  const roll = new THREE.Quaternion();
+  const rollAxis = new THREE.Vector3(0,0,1);
+  for (let i=0; i<asteroidCount; i++) {
+    const angle=random()*Math.PI*2, radius=7+random()*29;
+    asteroidPoses.push({x:Math.cos(angle)*radius, y:Math.sin(angle)*radius*.75-3, z:12-Math.floor(i/160)*SECTOR-random()*100, size:.25+random()**2*2.2, roll:(random()-.5)*Math.PI});
+    tiles[i*2]=i%2; tiles[i*2+1]=Math.floor(i/2)%2;
   }
+  rockGeometry.setAttribute('asteroidTile',new THREE.InstancedBufferAttribute(tiles,2));
+  asteroids.frustumCulled=false;
   scene.add(asteroids);
 
   try {
-    await Promise.all(products.map(async (product, index) => {
+    const built = await Promise.allSettled(products.map(async (product, index) => {
       const [surface, photo] = await Promise.all([
-        loader.loadAsync(`assets/flight/${textures[index]}`),
+        loader.loadAsync(`assets/planets/${textures[index]}.png`),
         loader.loadAsync(product.photo)
       ]);
       surface.colorSpace = photo.colorSpace = THREE.SRGBColorSpace;
       surface.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       resources.push(surface, photo);
-      const radius = worlds[index].radius;
-      const planet = new THREE.Group();
-      planet.position.set(3.5, .3, -index * SECTOR - 27);
-      const body = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), planetMaterial(surface, index));
-      body.rotation.y = index === 4 ? -1.1 : index === 5 ? -1.7 : .15;
-      planet.add(body, atmosphere(radius, worlds[index].rim));
-      if (index === 1) {
-        const innerRadius = radius * 1.15, outerRadius = radius * 2.03;
-        const rings = new THREE.Mesh(new THREE.RingGeometry(innerRadius, outerRadius, 192), ringMaterial(innerRadius, outerRadius, radius));
-        // Rotate the ring plane itself around the view axis; Euler Z before X inverted the slope.
-        rings.rotation.x = -1.40;
-        rings.rotateOnWorldAxis(new THREE.Vector3(0,0,1), -.32);
-        planet.add(rings);
-      }
+      const planet = makePlanet(surface,index);
+      planet.position.set(1.6,.4,-index*SECTOR-27);
       scene.add(planet);
       planets[index] = planet;
 
@@ -215,7 +181,11 @@ export async function createFlight(stage, products) {
       scene.add(shelf);
       shelves[index] = shelf;
     }));
+    const failure = built.find(result=>result.status==='rejected');
+    if (failure) throw failure.reason;
   } catch (error) {
+    scene.traverse(object=>{ object.geometry?.dispose(); object.material?.dispose(); });
+    terrainGeometry.dispose(); terrainMaterial.dispose();
     renderer.dispose();
     resources.forEach(texture => texture.dispose());
     return null;
@@ -256,6 +226,7 @@ export async function createFlight(stage, products) {
     camera.position.set(departure > 0 ? lerp(0,-1.2,departure)+Math.sin(departure*Math.PI)*4.2 : lerp(-1.2,0,approach), departure > 0 ? .1*departure+Math.sin(departure*Math.PI)*.9 : .1*(1-approach), cameraZ);
     camera.lookAt(camera.position.x * .5, camera.position.y * .5, cameraZ - 40);
     const world = worlds[index];
+    stage.style.setProperty('--nebula-glow', ['#b4d9ff35','#d6ae6c24','#ddb3c62b','#ce9b7425','#a5ccee30','#8fabf640'][index]);
     const planetDistance = finalCameraZ + 27;
     const planetSpan = 2 * planetDistance * Math.tan(FOV * Math.PI / 360);
     // The planet moves to the upper right during arrival, leaving the product and text in front.
@@ -285,16 +256,26 @@ export async function createFlight(stage, products) {
       pack.material.opacity = ease((phase - .22) / .12) * (1 - exit);
       terrainMaterial.opacity = ease((phase - .49) / .07) * (1 - exit);
       shelves[i].position.set(pack.position.x, pack.position.y - pose.h / 2 - .025, pack.position.z - .12);
-      const planet = planets[i];
-      planet.rotation.y = phase * .045;
     });
     planets.forEach((planet, i) => {
-      planet.visible = i === index || i === index + 1;
+      planet.visible = i === index || (i === index + 1 && departure > .05);
       if (i !== index) { planet.position.x = 1.6; planet.position.y = .4; planet.scale.setScalar(Math.min(1, camera.aspect / .95)); }
     });
+    planets.forEach(planet => planet.quaternion.copy(camera.quaternion));
+    asteroidPoses.forEach((rock,i) => {
+      const distance=cameraZ-rock.z;
+      const size=rock.size*ease((distance-3)/4);
+      transform.position.set(rock.x,rock.y,rock.z);
+      transform.scale.setScalar(size);
+      roll.setFromAxisAngle(rollAxis,rock.roll);
+      transform.quaternion.copy(camera.quaternion).multiply(roll);
+      transform.updateMatrix(); asteroids.setMatrixAt(i,transform.matrix);
+    });
+    asteroids.instanceMatrix.needsUpdate=true;
     renderer.render(scene, camera);
     stage.dataset.flightPhase = phase < .22 ? 'approach' : phase < .55 ? 'arrival' : phase < .8 || index === products.length - 1 ? 'hold' : 'departure';
     stage.dataset.cameraZ = cameraZ.toFixed(3);
+    stage.dataset.planetAsset = `assets/planets/${textures[index]}.png`;
   }
   const onResize = () => { resize(); render(lastCursor); };
   addEventListener('resize', onResize);

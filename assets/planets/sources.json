@@ -1,0 +1,124 @@
+[
+  {
+    "file": "assets/planets/moon.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "alpha_bounds": [
+      0,
+      0,
+      1254,
+      1254
+    ],
+    "sha256": "22fed6d33e74d945edec0da01c5c5de6026e22e68093ee35980eb25a32671b68",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": 9
+  },
+  {
+    "file": "assets/planets/saturn.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1672,
+      941
+    ],
+    "alpha_bounds": [
+      0,
+      0,
+      1672,
+      941
+    ],
+    "sha256": "6ec1c00f15a9622bb35a904ca9f263e513eec0392e88b23adbae7107b80e241d",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": 18.5
+  },
+  {
+    "file": "assets/planets/venus.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "alpha_bounds": [
+      0,
+      0,
+      1253,
+      1254
+    ],
+    "sha256": "7f0500723e3d120a859e877e327d1c7afd76f2e96dd075bb8e16aa2cb749d215",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": 27
+  },
+  {
+    "file": "assets/planets/mars.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "alpha_bounds": [
+      0,
+      21,
+      1253,
+      1254
+    ],
+    "sha256": "acf2a7fdca92c951a1e0d872678e41af7a072b53d7564babecf3c0f4f3f72984",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": 39
+  },
+  {
+    "file": "assets/planets/earth.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "alpha_bounds": [
+      0,
+      0,
+      1253,
+      1254
+    ],
+    "sha256": "143c513b6d2a33f7f45ff89b1d8dd134327b76054bc2e9f4b1881a275fd5417b",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": 50
+  },
+  {
+    "file": "assets/planets/neptune.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "alpha_bounds": [
+      0,
+      0,
+      1253,
+      1254
+    ],
+    "sha256": "c725ffe01a479f48aa06fc42ac5f505ef31911c69eb3f3ab23f80d2c3f6f2947",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": 58
+  },
+  {
+    "file": "assets/planets/asteroids.png",
+    "source": "Reconstructed with image generation from the user-supplied Moonvit video frames; not an original 3D mesh.",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "alpha_bounds": [
+      0,
+      9,
+      1238,
+      1254
+    ],
+    "sha256": "427c1c1a6792b564daf6921e91501918bce096fd73e66dcc1ae953bdcca884fb",
+    "reference_video": "IMG_3195.mp4",
+    "reference_frame_seconds": [
+      9,
+      39
+    ]
+  }
+]

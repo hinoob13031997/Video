@@ -99,13 +99,15 @@ with sync_playwright() as playwright:
     assert not errors, errors
     browser.close()
 
-    for failure in ['no-webgl', 'texture-failure']:
+    for failure in ['no-webgl', 'texture-failure', 'planet-failure']:
         args = ['--no-sandbox'] + (['--disable-webgl'] if failure == 'no-webgl' else [])
         browser = playwright.chromium.launch(executable_path='/usr/bin/chromium', headless=True, args=args)
         page = browser.new_page(viewport={'width':390, 'height':844})
         page.route('https://fonts.googleapis.com/**', lambda route: route.abort())
         if failure == 'texture-failure':
             page.route('**/assets/flight/moon.jpg', lambda route: route.abort())
+        if failure == 'planet-failure':
+            page.route('**/assets/planets/mars.png', lambda route: route.abort())
         page.goto(URL, wait_until='networkidle')
         assert page.locator('.flight-ready').count() == 0
         page.evaluate('''async () => {
