@@ -45,6 +45,9 @@ with sync_playwright() as playwright:
     page.wait_for_selector('.flight-ready')
     page.locator('[data-begin-flight]').first.click()
     page.wait_for_function("document.querySelector('#flight-intro').inert")
+    # Verify the button reaches its destination before issuing another scripted scroll.
+    page.wait_for_function('''Math.abs(scrollY - (journeyStart + .64 * chapterDistance)) < 2
+      && getComputedStyle(document.querySelector('[data-chapter="0"] .chapter-copy')).opacity === '1' ''')
 
     for index, name in enumerate(NAMES):
         go_to_phase(page, index + .65)
