@@ -18,9 +18,10 @@ const smooth = value => value * value * (3 - 2 * value);
 const worldPreloads = new Map();
 function preloadWorld(index) {
   if (index < 0 || index >= products.length || worldPreloads.has(index)) return;
-  const image = new Image();
-  image.src = products[index].world;
-  worldPreloads.set(index, image);
+  const images = [products[index].world, products[index].world.replace('.jpg', '-approach.jpg')].map(source => {
+    const image = new Image(); image.src = source; return image;
+  });
+  worldPreloads.set(index, images);
 }
 
 function measure() {
@@ -48,18 +49,21 @@ function draw() {
     chapter.style.visibility = opacity > 0 ? 'visible' : 'hidden';
     if (opacity > 0) {
       const phase = i === index ? fraction : 0;
+      const exit = i < chapters.length - 1 ? smooth(clamp((phase - .76) / .05)) : 0;
       const entrance = reducedMotion.matches ? 1 : smooth(clamp((phase - 0.22) / 0.33));
-      const copy = i === 0 && cursor < .18 ? 0 : reducedMotion.matches ? 1 : smooth(clamp((phase - 0.49) / 0.1)) * (1 - smooth(clamp((phase - 0.76) / 0.05)));
+      const copy = i === 0 && cursor < .18 ? 0 : reducedMotion.matches ? 1 : smooth(clamp((phase - 0.49) / 0.1)) * (1 - exit);
       const approach = smooth(clamp(phase / 0.55));
       const cameraDepth = 15 - 17 * approach;
       const productDepth = -24 + 18 * entrance;
       const perspectiveScale = Math.min(1.05, 4 / Math.max(.1, cameraDepth - productDepth));
       chapter.style.setProperty('--world', `url("${products[i].world}")`);
+      chapter.style.setProperty('--approach-world', `url("${products[i].world.replace('.jpg', '-approach.jpg')}")`);
+      chapter.style.setProperty('--world-arrival', reducedMotion.matches ? 1 : entrance);
       chapter.style.setProperty('--planet-scale', reducedMotion.matches ? 1 : 1.01 + approach * .55);
       chapter.style.setProperty('--world-x', `${reducedMotion.matches ? 0 : -phase * 24}px`);
       chapter.style.setProperty('--jar-scale', reducedMotion.matches ? 1 : perspectiveScale);
       chapter.style.setProperty('--jar-y', `${reducedMotion.matches ? 0 : 35 * (1 - entrance)}px`);
-      chapter.style.setProperty('--jar-opacity', reducedMotion.matches ? 1 : smooth(clamp((phase - .22) / .12)) * (1 - smooth(clamp((phase - .76) / .07))));
+      chapter.style.setProperty('--jar-opacity', reducedMotion.matches ? 1 : smooth(clamp((phase - .22) / .12)) * (1 - (i < chapters.length - 1 ? smooth(clamp((phase - .76) / .07)) : 0)));
       chapter.style.setProperty('--copy-opacity', copy);
       chapter.style.setProperty('--copy-y', `${reducedMotion.matches ? 0 : 18 * (1 - copy)}px`);
       chapter.style.setProperty('--approach-opacity', reducedMotion.matches || (i === 0 && cursor < .18) ? 0 : 1 - smooth(clamp((phase - .19) / .12)));
@@ -106,7 +110,7 @@ async function startFlight() {
   if (flightScene || flightLoading || reducedMotion.matches) return;
   flightLoading = true;
   try {
-    const module = await import('./flight.js?v=flight-20261014');
+    const module = await import('./flight.js?v=models-20261014');
     const created = await module.createFlight(stage, products);
     if (reducedMotion.matches) created?.dispose();
     else flightScene = created;

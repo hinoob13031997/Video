@@ -1,7 +1,16 @@
 import * as THREE from './assets/vendor/three/three.module.js';
 
-// Original PNGs remain untouched. Cropping is performed with texture UVs.
+// Original product PNGs remain untouched; only transparent margins are cropped for GPU upload.
 const textures = ['moon.jpg', 'saturn.png', 'venus.png', 'mars.png', 'earth.jpg', 'neptune.png'];
+// Art direction measured against the supplied video, rather than one light for every planet.
+const worlds = [
+  {radius:12.3, light:[-.9,.35,.4], color:0xe1edff, rim:0x96bcff, tint:0xd9e0ec, landing:[.72,.27]},
+  {radius:13, light:[-.95,.3,.2], color:0xffedce, rim:0xffd8a0, tint:0xb8b1a2, landing:[.96,.18]},
+  {radius:12.5, light:[-.85,.45,.3], color:0xffe7df, rim:0xffd1d9, tint:0xedc6d1, landing:[.78,.30]},
+  {radius:13.4, light:[.9,.45,.15], color:0xffddaa, rim:0xffbb76, tint:0xce9d76, landing:[.78,.25]},
+  {radius:12.4, light:[-.9,.35,.35], color:0xdbedff, rim:0x8ec8ff, tint:0xd9eaff, landing:[.78,.28]},
+  {radius:13, light:[.95,.35,.18], color:0xd7eaff, rim:0x93caff, tint:0xb6c9ed, landing:[.77,.27]}
+];
 const SECTOR = 100;
 const FOV = 50;
 const startCameraZ = 15;
@@ -47,18 +56,24 @@ function makeTerrainGeometry() {
   return geometry;
 }
 
-function ringMaterial(innerRadius, outerRadius) {
+function ringMaterial(innerRadius, outerRadius, radius) {
   return new THREE.ShaderMaterial({
     transparent: true, side: THREE.DoubleSide, depthWrite: false,
-    uniforms: { inner: {value: innerRadius}, outer: {value: outerRadius} },
-    vertexShader: `varying vec3 ringPosition; void main(){ ringPosition=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-    fragmentShader: `varying vec3 ringPosition; uniform float inner; uniform float outer;
+    uniforms: { inner: {value: innerRadius}, outer: {value: outerRadius}, radius:{value:radius}, light:{value:new THREE.Vector3(-.95,.3,.2).normalize()} },
+    vertexShader: `varying vec3 ringPosition; varying vec3 planetPosition; void main(){ ringPosition=position; planetPosition=mat3(modelMatrix)*position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+    fragmentShader: `varying vec3 ringPosition; varying vec3 planetPosition; uniform float inner; uniform float outer; uniform float radius; uniform vec3 light;
       void main(){ float r=length(ringPosition.xy); float t=(r-inner)/(outer-inner);
       float fine=1.-smoothstep(.006,.03,fwidth(t));
-      float bands=.55+.2*sin(t*42.)+.1*sin(t*115.)+.06*sin(t*225.)*fine; float gap=1.-smoothstep(.39,.41,t)* (1.-smoothstep(.43,.45,t));
-      float alpha=(.3+.5*bands)*gap*smoothstep(0.,.025,t)*(1.-smoothstep(.94,1.,t));
-      vec3 color=mix(vec3(.35,.25,.14),vec3(.88,.74,.5),bands);
-      gl_FragColor=vec4(color,alpha); }`
+      float bands=.55+.17*sin(t*47.)+.12*sin(t*132.)+.09*sin(t*430.)*fine;
+      float gap=1.-smoothstep(.47,.48,t)*(1.-smoothstep(.505,.52,t));
+      float alpha=(.53+.38*bands)*gap*smoothstep(0.,.015,t)*(1.-smoothstep(.97,1.,t));
+      float along=dot(planetPosition,light); float distanceToRay=length(planetPosition-light*along);
+      float shadow=along<0. ? mix(.14,1.,smoothstep(radius*.97,radius*1.08,distanceToRay)) : 1.;
+      vec3 color=mix(vec3(.26,.17,.09),vec3(.79,.49,.22),bands)*shadow;
+      gl_FragColor=vec4(color,alpha);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+      }`
   });
 }
 
@@ -67,8 +82,15 @@ function atmosphere(radius, color) {
     uniforms: {glow: {value: new THREE.Color(color)}}, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
     vertexShader: `varying vec3 n; varying vec3 v; void main(){ vec4 p=modelViewMatrix*vec4(position,1.); n=normalize(normalMatrix*normal); v=normalize(-p.xyz); gl_Position=projectionMatrix*p; }`,
-    fragmentShader: `uniform vec3 glow; varying vec3 n; varying vec3 v; void main(){ float rim=pow(1.-max(0.,dot(normalize(n),normalize(v))),3.5); gl_FragColor=vec4(glow,rim*.28); }`
+    fragmentShader: `uniform vec3 glow; varying vec3 n; varying vec3 v; void main(){ float rim=pow(1.-max(0.,dot(normalize(n),normalize(v))),4.5); gl_FragColor=vec4(glow,rim*.55); }`
   }));
+}
+
+function planetMaterial(surface, index) {
+  const material = new THREE.MeshStandardMaterial({map:surface, color:worlds[index].tint, roughness:1, metalness:0});
+  if (index === 0 || index === 3) { material.bumpMap = surface; material.bumpScale = index === 0 ? .09 : .055; }
+
+  return material;
 }
 
 export async function createFlight(stage, products) {
@@ -83,7 +105,7 @@ export async function createFlight(stage, products) {
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.18;
+  renderer.toneMappingExposure = 1.05;
   renderer.domElement.className = 'flight-canvas';
   renderer.domElement.setAttribute('aria-hidden', 'true');
   const scene = new THREE.Scene();
@@ -95,8 +117,8 @@ export async function createFlight(stage, products) {
   const shelves = [];
   const key = new THREE.DirectionalLight(0xffe8c9, 3.2);
   key.position.set(-30, 15, 14);
-  scene.add(key, key.target, new THREE.AmbientLight(0xbfcbea, .34));
-  const fill = new THREE.DirectionalLight(0x729ce0, .45);
+  scene.add(key, key.target, new THREE.AmbientLight(0xbfcbea, .14));
+  const fill = new THREE.DirectionalLight(0x729ce0, .12);
   fill.position.set(25, -5, -20);
   scene.add(fill, fill.target);
   const random = randomGenerator(771);
@@ -112,7 +134,9 @@ export async function createFlight(stage, products) {
   scene.add(stars);
 
   const rockGeometry = makeRockGeometry();
-  const rockMap = await loader.loadAsync('assets/flight/moon.jpg');
+  let rockMap;
+  try { rockMap = await loader.loadAsync('assets/flight/moon.jpg'); }
+  catch { renderer.dispose(); rockGeometry.dispose(); starsGeometry.dispose(); stars.material.dispose(); return null; }
   rockMap.colorSpace = THREE.SRGBColorSpace;
   const rockMaterial = new THREE.MeshStandardMaterial({map:rockMap, color:0x726a60, roughness:1});
   const groundMap = rockMap.clone();
@@ -147,16 +171,18 @@ export async function createFlight(stage, products) {
       surface.colorSpace = photo.colorSpace = THREE.SRGBColorSpace;
       surface.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       resources.push(surface, photo);
-      const radius = index === 1 ? 11.8 : 11.5;
+      const radius = worlds[index].radius;
       const planet = new THREE.Group();
       planet.position.set(3.5, .3, -index * SECTOR - 27);
-      const body = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), new THREE.MeshStandardMaterial({map:surface, roughness:1, metalness:0}));
-      body.rotation.y = index === 4 ? -1.1 : .15;
-      planet.add(body, atmosphere(radius, product.accent));
+      const body = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 48), planetMaterial(surface, index));
+      body.rotation.y = index === 4 ? -1.1 : index === 5 ? -1.7 : .15;
+      planet.add(body, atmosphere(radius, worlds[index].rim));
       if (index === 1) {
-        const innerRadius = radius * 1.185, outerRadius = radius * 1.845;
-        const rings = new THREE.Mesh(new THREE.RingGeometry(innerRadius, outerRadius, 160), ringMaterial(innerRadius, outerRadius));
-        rings.rotation.set(-1.25, -.14, -.32);
+        const innerRadius = radius * 1.15, outerRadius = radius * 2.03;
+        const rings = new THREE.Mesh(new THREE.RingGeometry(innerRadius, outerRadius, 192), ringMaterial(innerRadius, outerRadius, radius));
+        // Rotate the ring plane itself around the view axis; Euler Z before X inverted the slope.
+        rings.rotation.x = -1.40;
+        rings.rotateOnWorldAxis(new THREE.Vector3(0,0,1), -.32);
         planet.add(rings);
       }
       scene.add(planet);
@@ -219,8 +245,8 @@ export async function createFlight(stage, products) {
   let lastCursor = 0;
   let disposed = false;
   function render(cursor) {
-    if (disposed) return;
     lastCursor = cursor;
+    if (disposed) return;
     const index = Math.min(5, Math.floor(cursor));
     const phase = cursor - index;
     const approach = ease(phase / .55);
@@ -229,10 +255,22 @@ export async function createFlight(stage, products) {
     const cameraZ = departure > 0 ? lerp(base + finalCameraZ, base - SECTOR + startCameraZ, departure) : lerp(base + startCameraZ, base + finalCameraZ, approach);
     camera.position.set(departure > 0 ? lerp(0,-1.2,departure)+Math.sin(departure*Math.PI)*4.2 : lerp(-1.2,0,approach), departure > 0 ? .1*departure+Math.sin(departure*Math.PI)*.9 : .1*(1-approach), cameraZ);
     camera.lookAt(camera.position.x * .5, camera.position.y * .5, cameraZ - 40);
-    key.position.z = cameraZ + 30;
-    fill.position.z = cameraZ - 15;
-    key.target.position.set(3.5, .3, base - 27);
-    fill.target.position.set(3.5, .3, base - 27);
+    const world = worlds[index];
+    const planetDistance = finalCameraZ + 27;
+    const planetSpan = 2 * planetDistance * Math.tan(FOV * Math.PI / 360);
+    // The planet moves to the upper right during arrival, leaving the product and text in front.
+    const composition = ease((phase - .22) / .33);
+    const landingX = width <= 700 ? .66 : world.landing[0];
+    const landingY = width <= 700 ? .52 : world.landing[1];
+    planets[index].position.x = lerp(1.6, (landingX - .5) * planetSpan * camera.aspect, composition);
+    planets[index].position.y = lerp(.4, (.5 - landingY) * planetSpan, composition);
+    // Preserve the planetary silhouette on portrait screens.
+    planets[index].scale.setScalar(Math.min(1, camera.aspect / .95));
+    key.color.setHex(world.color);
+    key.position.copy(planets[index].position).add(new THREE.Vector3(...world.light).multiplyScalar(60));
+    fill.position.copy(planets[index].position).add(new THREE.Vector3(-world.light[0]*50,0,20));
+    key.target.position.copy(planets[index].position);
+    fill.target.position.copy(planets[index].position);
     stars.position.x = Math.sin(cursor * .65) * 2;
     packshots.forEach((pack, i) => {
       const active = i === index;
@@ -243,21 +281,28 @@ export async function createFlight(stage, products) {
       const pose = poses[i];
       pack.position.set(pose.x, pose.y - .45 * (1 - arrival), base + lerp(-24, finalProductZ, arrival));
       pack.scale.set(pose.w, pose.h, 1);
-      pack.material.opacity = ease((phase - .22) / .12) * (1 - ease((phase - .76) / .07));
-      terrainMaterial.opacity = ease((phase - .49) / .07) * (1 - ease((phase - .77) / .06));
+      const exit = index < products.length - 1 ? ease((phase - .76) / .07) : 0;
+      pack.material.opacity = ease((phase - .22) / .12) * (1 - exit);
+      terrainMaterial.opacity = ease((phase - .49) / .07) * (1 - exit);
       shelves[i].position.set(pack.position.x, pack.position.y - pose.h / 2 - .025, pack.position.z - .12);
       const planet = planets[i];
       planet.rotation.y = phase * .045;
     });
-    planets.forEach((planet, i) => { planet.visible = i === index || i === index + 1; });
+    planets.forEach((planet, i) => {
+      planet.visible = i === index || i === index + 1;
+      if (i !== index) { planet.position.x = 1.6; planet.position.y = .4; planet.scale.setScalar(Math.min(1, camera.aspect / .95)); }
+    });
     renderer.render(scene, camera);
-    stage.dataset.flightPhase = phase < .22 ? 'approach' : phase < .55 ? 'arrival' : phase < .8 ? 'hold' : 'departure';
+    stage.dataset.flightPhase = phase < .22 ? 'approach' : phase < .55 ? 'arrival' : phase < .8 || index === products.length - 1 ? 'hold' : 'departure';
     stage.dataset.cameraZ = cameraZ.toFixed(3);
   }
   const onResize = () => { resize(); render(lastCursor); };
   addEventListener('resize', onResize);
   renderer.domElement.addEventListener('webglcontextlost', event => {
     event.preventDefault(); stage.classList.remove('flight-ready'); disposed = true;
+  });
+  renderer.domElement.addEventListener('webglcontextrestored', () => {
+    disposed = false; stage.classList.add('flight-ready'); render(lastCursor);
   });
   return {
     render,
