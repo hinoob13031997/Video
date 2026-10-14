@@ -48,6 +48,14 @@ with sync_playwright() as playwright:
     # Verify the button reaches its destination before issuing another scripted scroll.
     page.wait_for_function('''Math.abs(scrollY - (journeyStart + .64 * chapterDistance)) < 2
       && getComputedStyle(document.querySelector('[data-chapter="0"] .chapter-copy')).opacity === '1' ''')
+    # Interrupt a moving navigation flight: it must not resume and override the new position.
+    starting_position = page.evaluate('scrollY')
+    page.locator('[data-scene="5"]').click(force=True)
+    page.wait_for_function('start => scrollY > start + 120', arg=starting_position)
+    go_to_phase(page, 2.65)
+    expected_position = page.evaluate('journeyStart + 2.65 * chapterDistance')
+    page.wait_for_timeout(600)
+    assert abs(page.evaluate('scrollY') - expected_position) < 2
 
     for index, name in enumerate(NAMES):
         go_to_phase(page, index + .65)

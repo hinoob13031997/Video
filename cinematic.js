@@ -13,6 +13,7 @@ let journeyStart = 0;
 let lastFocused;
 let flightScene = null;
 let flightLoading = false;
+let journeyScrollFrame = 0;
 const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 const smooth = value => value * value * (3 - 2 * value);
 const worldPreloads = new Map();
@@ -111,7 +112,7 @@ async function startFlight() {
   if (flightScene || flightLoading || reducedMotion.matches) return;
   flightLoading = true;
   try {
-    const module = await import('./flight.js?v=reference-20261014-2');
+    const module = await import('./flight.js?v=reference-20261014-3');
     const created = await module.createFlight(stage, products);
     if (reducedMotion.matches) created?.dispose();
     else flightScene = created;
@@ -120,16 +121,45 @@ async function startFlight() {
   } finally { flightLoading = false; requestFrame(); }
 }
 reducedMotion.addEventListener('change', () => {
+  cancelJourneyScroll();
   if (reducedMotion.matches && flightScene) { flightScene.dispose(); flightScene = null; }
   else startFlight();
   requestFrame();
 });
+function cancelJourneyScroll() {
+  cancelAnimationFrame(journeyScrollFrame);
+  journeyScrollFrame = 0;
+}
+function scrollJourney(cursor) {
+  cancelJourneyScroll();
+  const destination = journeyStart + cursor * chapterDistance;
+  if (reducedMotion.matches) { scrollTo({top:destination, behavior:'instant'}); return; }
+  const origin = scrollY;
+  const distance = destination - origin;
+  const duration = clamp(Math.abs(distance) * .25, 650, 1400);
+  let started = null;
+  let lastPosition = origin;
+  function move(time) {
+    // A gesture or another programmatic scroll takes control immediately.
+    if (Math.abs(scrollY - lastPosition) > 2) { cancelJourneyScroll(); return; }
+    started ??= time;
+    const progress = clamp((time - started) / duration);
+    scrollTo({top:origin + distance * smooth(progress), behavior:'instant'});
+    lastPosition = scrollY;
+    journeyScrollFrame = progress < 1 ? requestAnimationFrame(move) : 0;
+  }
+  journeyScrollFrame = requestAnimationFrame(move);
+}
+['wheel','touchstart','pointerdown'].forEach(type => addEventListener(type,cancelJourneyScroll,{passive:true}));
+addEventListener('keydown', event => {
+  if (['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key)) cancelJourneyScroll();
+});
 navigation.forEach(button => button.addEventListener('click', () => {
-  scrollTo({top: journeyStart + (Number(button.dataset.scene) + 0.64) * chapterDistance, behavior: reducedMotion.matches ? 'instant' : 'smooth'});
+  scrollJourney(Number(button.dataset.scene) + .64);
 }));
 document.querySelectorAll('[data-begin-flight]').forEach(link => link.addEventListener('click', event => {
   event.preventDefault();
-  scrollTo({top:journeyStart + .64 * chapterDistance, behavior:reducedMotion.matches ? 'instant' : 'smooth'});
+  scrollJourney(.64);
 }));
 
 document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => {
