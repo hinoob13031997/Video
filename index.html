@@ -3,41 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#06080c">
-  <meta name="description" content="Moonvit — витамины в формате жевательных пастилок. Выберите свою планету.">
-  <title>Moonvit — ваша вселенная заботы</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="theme-color" content="#04070c">
+  <meta name="description" content="Moonvit — интерактивная вселенная витаминов. Шесть самостоятельных космических сцен.">
+  <title>Moonvit — выберите свой мир</title>
+  <link rel="stylesheet" href="scenes.css">
 </head>
 <body>
-  <header class="header">
-    <a href="#home" class="logo" aria-label="Moonvit — главная">moonvit<sup>®</sup></a>
-    <nav aria-label="Основная навигация"><a href="scenes.html">Версия без видео ↗</a><a href="#catalog">Коллекция</a><a href="#about">О Moonvit</a><a href="https://moonvit.space/contacts" target="_blank" rel="noopener">Контакты ↗</a></nav>
-    <a class="header-cta" href="#catalog">Выбрать планету <span>↗</span></a>
-  </header>
-  <main>
-    <section class="journey" id="home" aria-label="Космическое путешествие Moonvit">
-      <video id="journey-video" poster="assets/poster.jpg" autoplay muted playsinline preload="auto"><source src="assets/moonvit-journey.mp4" type="video/mp4"></video>
-      <div class="shade"></div>
-      <div class="intro" id="intro"><p class="eyebrow">ВАША ВСЕЛЕННАЯ ЗАБОТЫ</p><h1>Маленький ритуал.<br><em>Целая вселенная.</em></h1><p>Шесть планет. Шесть способов заботиться о себе.<br>Найдите свою орбиту вместе с Moonvit.</p><button class="outline" id="explore">Начать путешествие <span>↗</span></button></div>
-      <div class="scene-label"><span id="scene-number">01 / 06</span><span id="scene-name">Moon · Сон и расслабление</span></div>
-      <div class="planet-nav" aria-label="Выбор планеты">
-        <button data-time="6" data-name="Moon · Сон и расслабление" class="active">Moon</button>
-        <button data-time="18" data-name="Saturn · Энергия и иммунитет">Saturn</button>
-        <button data-time="30" data-name="Venus · Женский мультикомплекс">Venus</button>
-        <button data-time="42" data-name="Mars · Мужской мультикомплекс">Mars</button>
-        <button data-time="50" data-name="Earth · Кожа, волосы, ногти">Earth</button>
-        <button data-time="62" data-name="Neptune · Коллаген + биотин">Neptune</button>
-      </div>
-      <div class="bottom-controls"><button id="play-toggle" aria-label="Приостановить видео">Ⅱ</button><div class="progress"><div id="progress-fill"></div></div><a href="#catalog">Откройте свою планету ↓</a></div>
+  <header><a class="logo" href="index.html">moonvit<sup>®</sup></a><nav aria-label="Основная навигация"><a href="index.html" aria-current="page">Главная</a><a href="video.html#catalog">Коллекция</a><a href="video.html#about">О бренде</a><a href="https://moonvit.space/b2b" target="_blank" rel="noopener">Сотрудничество</a><a href="https://moonvit.space/contacts" target="_blank" rel="noopener">Контакты</a></nav><button class="select-world" id="world-toggle">Выбрать свой мир ↗</button></header>
+  <main class="universe" aria-label="Коллекция планет Moonvit">
+    <div class="background" id="background-a" aria-hidden="true"></div>
+    <div class="background next" id="background-b" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="dust" aria-hidden="true"></div>
+    <section class="scene-copy" id="scene-copy" aria-live="polite">
+      <p class="eyebrow" id="scene-eyebrow">ВАША ВЕЧЕРНЯЯ ОРБИТА</p>
+      <h1 id="planet-title">Moon</h1>
+      <h2 id="planet-subtitle">Сон и расслабление</h2>
+      <p class="description" id="planet-description">Маленькая пауза для себя.<br>Новая планета в вашем вечернем ритуале.</p>
+      <a class="product-link" href="https://moonvit.space/catalog" target="_blank" rel="noopener">Открыть коллекцию <span>↗</span></a>
     </section>
-    <section class="collection" id="catalog">
-      <div class="section-heading"><div><p class="eyebrow">КОЛЛЕКЦИЯ MOONVIT</p><h2>На вашей <em>орбите.</em></h2></div><p>Забота о себе начинается с простого выбора.<br>Выберите серию под свою задачу.</p></div>
-      <div class="filters" aria-label="Фильтр коллекции"><button class="selected" data-filter="all">Все планеты</button><button data-filter="balance">Баланс</button><button data-filter="energy">Энергия</button><button data-filter="beauty">Красота</button></div>
-      <div class="products" id="products"></div>
-    </section>
-    <section class="about" id="about"><p class="eyebrow">ПРИВЫЧКА ЗАБОТИТЬСЯ О СЕБЕ</p><h2>Ваша ежедневная<br><em>точка притяжения.</em></h2><p>Moonvit — жевательные витамины в формате пастилок. Знакомые ритуалы, разные вкусы и серии под ваши задачи.</p><div class="benefits"><div><span>01</span><h3>Выберите свою серию</h3><p>Изучите назначение, состав и рекомендации на странице продукта.</p></div><div><span>02</span><h3>Создайте свой ритуал</h3><p>Удобный жевательный формат, который не требует воды.</p></div><div><span>03</span><h3>Заботьтесь осознанно</h3><p>Следуйте инструкции и учитывайте индивидуальные противопоказания.</p></div></div></section>
+    <div class="product-stage" id="product-stage"><div class="product-sprite" id="product-sprite" role="img" aria-label="Концептуальная упаковка Moonvit Moon"></div><div class="product-shadow" aria-hidden="true"></div></div>
+    <aside class="planets" aria-label="Переключение планет">
+      <button data-planet="0" class="active" aria-pressed="true">Moon<span></span></button>
+      <button data-planet="1" aria-pressed="false">Saturn<span></span></button>
+      <button data-planet="2" aria-pressed="false">Venus<span></span></button>
+      <button data-planet="3" aria-pressed="false">Mars<span></span></button>
+      <button data-planet="4" aria-pressed="false">Earth<span></span></button>
+      <button data-planet="5" aria-pressed="false">Neptune<span></span></button>
+    </aside>
+    <div class="scene-footer"><span class="scene-count" id="scene-count">01 <span>/ 06</span></span><p>ЖЕВАТЕЛЬНЫЕ ВИТАМИНЫ · MOONVIT</p><div class="arrows"><button id="previous" aria-label="Предыдущая планета">←</button><button id="next" aria-label="Следующая планета">→</button></div></div>
+    <p class="concept-note">Визуальная концепция · Упаковка сгенерирована по референсу</p>
   </main>
-  <footer><a href="#home" class="logo">moonvit<sup>®</sup></a><p>© 2026 Moonvit · Концепция по видеореференсу</p><a href="https://moonvit.space/" target="_blank" rel="noopener">Официальный сайт ↗</a><small>БАД. Не является лекарственным средством. Перед применением ознакомьтесь с инструкцией.</small></footer>
-  <script src="app.js"></script>
+  <script src="scenes.js"></script>
 </body>
 </html>
