@@ -27,7 +27,7 @@ const build=(records,label)=>{const n=records.length,sets={},map={},own={},label
  return [build(previous,'demo-old'),build(current,'demo-new')];}
 function bytesToBase64(u){let s='';for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode(...u.subarray(i,i+8192));return btoa(s)}
 function base64ToBytes(str){const s=atob(str);const out=new Uint8Array(s.length);for(let i=0;i<s.length;i++)out[i]=s.charCodeAt(i);return out}
-const cleanID=v=>String(v??'').trim().replace(/\.0+$/,'');
+const cleanID=v=>{let t=String(v??'').trim();return /^-?\d+\.0+$/.test(t)?t.replace(/\.0+$/,''):t};
 function validSnap(s){return !!(s&&Array.isArray(s.ids)&&s.map&&s.sets&&Number.isInteger(s.n)&&s.n>=0&&s.ids.length===s.n)}
 function prepareSnapshot(s){if(!validSnap(s))throw Error('Неверный формат: ожидается снимок с полями ids, map и sets');const idx=new Map(),duplicate=new Set();s.ids.forEach((raw,i)=>{const id=cleanID(raw);if(!id)return;if(idx.has(id)){duplicate.add(id)}else idx.set(id,i)});
  const bitsets={};const decoded={};for(const id of nodeIds){const key=s.map[id];if(key==null)continue;if(typeof s.sets[key]!=='string')throw Error('Отсутствуют данные блока '+id);if(!decoded[key])decoded[key]=base64ToBytes(s.sets[key]);if(decoded[key].length!==Math.ceil(s.n/8))throw Error('Повреждён состав блока '+id);bitsets[id]=decoded[key]}
@@ -36,34 +36,72 @@ function membership(s,i){if(!s||i==null||i<0)return[];const out=[];for(const cod
 function filterOptions(){const d=new Date();return{sum:Number($('#minAmt').value)||0,death:$('#deathFilter').value||'all',limit:Date.UTC(d.getFullYear(),d.getMonth()-5,d.getDate())/86400000,cessions:cessionSelected}}
 function masksFor(s){if(!maskCache.has(s)){const o=filterOptions();maskCache.set(s,{normal:W.filterMask(s,o,false),root:W.filterMask(s,o,true)})}return maskCache.get(s)}
 function visible(s,i){return !!(s&&i!=null&&i>=0&&masksFor(s).normal[i])}
-let draggingView=null,skipPanClick=false,hoveredNode=null,liveLinks=true,motionSpeed=1,structureMotionKey='',routeStarted=0;let singleMode=false,rawWarnings="",previous=null,current=null,analysis=null,display='vertical',branch='all',selected='A1',scale=1,playing=false,flowIndex=0,filteredFlows=[],viewPositions={},renderVersion=0;
+let draggingView=null,skipPanClick=false,hoveredNode=null,liveLinks=true,motionSpeed=1,structureMotionKey='',routeStarted=0,focusOnly=false,activeRouteKey=null,mapPaths=[],comparisonCounts=new Map();let singleMode=false,rawWarnings="",previous=null,current=null,analysis=null,display='vertical',branch='all',selected='A1',scale=1,playing=false,flowIndex=0,filteredFlows=[],viewPositions={},renderVersion=0;
 const canvas=$('#canvas'),board=$('#board'),wrap=$('#canvasWrap'),svg=$('#edges'),layer=$('#nodeLayer'),badges=$('#badgeLayer');
-function analyze(before,after){const beforeCount={},afterCount={},blockAdded={},blockRemoved={},blockAddedIds={},blockRemovedIds={};for(const code of nodeIds){beforeCount[code]=0;afterCount[code]=0;blockAdded[code]=0;blockRemoved[code]=0;blockAddedIds[code]=[];blockRemovedIds[code]=[];}
-const skipped=new Set([...(before?.duplicate||[]),...(after?.duplicate||[])]);let newTotal=0,goneTotal=0,unchanged=0,ambiguous=0,ruleAffected=0,cleanMoves=0,missing=0,filterChanged=0;
-const flows=new Map(),ambiguousRows=[],ruleRows=[],addedRows=[],goneRows=[];
-const addSample=(dict,key,id)=>{dict[key].push(id)};
-const all=new Set([...(before?.idx?.keys()||[]),...(after?.idx?.keys()||[])]);
- for(const id of all){if(skipped.has(id))continue;const ai=before?.idx.get(id),bi=after?.idx.get(id);const aPresent=ai!==undefined&&ai!==null,bPresent=bi!==undefined&&bi!==null;
- const va=aPresent&&visible(before,ai),vb=bPresent&&visible(after,bi);
- if(!va&&!vb)continue;
- const comparable=code=>code==='root'||before?.own?.[code]||after?.own?.[code];const a=va?membership(before,ai).filter(comparable):[],b=vb?membership(after,bi).filter(comparable):[];
- // Current totals are counted separately, with the original row-based filters.
- const as=new Set(a),bs=new Set(b),exited=a.filter(x=>!bs.has(x)),entered=b.filter(x=>!as.has(x));
- for(const code of exited){blockRemoved[code]++;addSample(blockRemovedIds,code,id)}
- for(const code of entered){blockAdded[code]++;addSample(blockAddedIds,code,id)}
- if(!aPresent&&bPresent){newTotal++;addedRows.push({id,from:'—',to:b.join(', '),kind:'Новый в реестре'});continue}
- if(aPresent&&!bPresent){goneTotal++;goneRows.push({id,from:a.join(', '),to:'—',kind:'Выбыл из реестра'});continue}
- if(va!==vb){filterChanged++;continue}
- if(!exited.length&&!entered.length){unchanged++;continue}
- const changedSig=[...exited,...entered].some(x=>!before?.sig?.[x]||!after?.sig?.[x]||before.sig[x]!==after.sig[x]);
- if(changedSig){ruleAffected++;ruleRows.push({id,from:exited.join(', '),to:entered.join(', '),kind:'Изменены правила'});continue}
- const eligible=x=>(before?.own?.[x]||after?.own?.[x])&& !['root','dead'].includes(x);
- const src=exited.filter(eligible),dst=entered.filter(eligible);
- if(src.length===1&&dst.length===1&&exited.length===1&&entered.length===1&&src[0]!==dst[0]){
-  const key=src[0]+'|'+dst[0];let f=flows.get(key);if(!f){f={key,from:src[0],to:dst[0],count:0,ids:[],source:'membership'};flows.set(key,f)}f.count++;f.ids.push(id);cleanMoves++;
- }else{ambiguous++;ambiguousRows.push({id,from:exited.join(', ')||'остался',to:entered.join(', ')||'остался',kind:'Несколько/нет однозначного маршрута'})}
+// Compare complete membership sets. A changed parent/base/exclusion makes dependent rules uncertain.
+function uncertainRules(before,after){
+ const bad=new Set(),deps=new Map();
+ for(const code of nodeIds){
+  const x=before.sig?.[code],y=after.sig?.[code];
+  if(!x||!y||x!==y||!before.bitsets[code]||!after.bitsets[code]||!!before.own?.[code]!==!!after.own?.[code])bad.add(code);
+  const d=new Set();
+  for(const s of [before,after]){
+   const m=s.nodesMeta?.find(n=>n.id===code);
+   if(m){for(const id of [...(m.bases||m.parents||[]),...(Array.isArray(m.subtract)?m.subtract:[])])if(id&&id!==code)d.add(id)}
+   try{const sig=JSON.parse(s.sig?.[code]||'null');if(Array.isArray(sig)&&sig.length===5){const parents=String(sig[0]||'').split(';'),from=String(sig[1]||'').split(';');for(const id of [...(from.some(Boolean)?from:parents),...(Array.isArray(sig[2])?sig[2]:[])])if(id&&id!==code)d.add(id)}else if(s.demo&&Array.isArray(sig)&&sig[0])d.add(sig[0]);else if(!m&&!s.demo&&code!=='root')bad.add(code)}catch{if(!s.demo)bad.add(code)}
+  }deps.set(code,d)
  }
- const order=[...flows.values()].sort((a,b)=>b.count-a.count);return{beforeCount:Object.fromEntries(nodeIds.map(id=>[id,previousStats[id]?.count||0])),afterCount:Object.fromEntries(nodeIds.map(id=>[id,currentStats[id]?.count||0])),blockAdded,blockRemoved,blockAddedIds,blockRemovedIds,flows:order,newTotal,goneTotal,unchanged,ambiguous,ruleAffected,cleanMoves,missing,filterChanged,skipped:skipped.size,addedRows,goneRows,ambiguousRows,ruleRows,source:before?.file+' → '+after?.file};}
+ let more=true;while(more){more=false;for(const [id,d] of deps)if(!bad.has(id)&&[...d].some(x=>bad.has(x)||!nodeMap.has(x))){bad.add(id);more=true}}
+ return bad;
+}
+function analyze(before,after){
+ const blockAdded={},blockRemoved={},blockAddedIds={},blockRemovedIds={};
+ for(const code of nodeIds){blockAdded[code]=0;blockRemoved[code]=0;blockAddedIds[code]=[];blockRemovedIds[code]=[]}
+ const skipped=new Set([...before.duplicate,...after.duplicate]),bad=uncertainRules(before,after);
+ const flows=new Map(),ambiguousRows=[],ruleRows=[],addedRows=[],goneRows=[],filterRows=[],entryRows=[],exitRows=[],duplicateRows=[];
+ let unchanged=0,missing=0;
+ const relevant=(s,i)=>membership(s,i).filter(code=>code==='root'||s.own?.[code]||s.demo);
+ const delta=(a,b)=>{const set=new Set(b);return a.filter(x=>!set.has(x))};
+ const row=(id,a,b,kind)=>({id,from:a.join(', ')||'—',to:b.join(', ')||'—',kind});
+ const all=new Set([...before.idx.keys(),...after.idx.keys()]);
+ const bm=masksFor(before),am=masksFor(after);
+ for(const id of all){
+  const ai=before.idx.get(id),bi=after.idx.get(id),ap=ai!==undefined,bp=bi!==undefined;
+  const va=ap&&!!bm.normal[ai],vb=bp&&!!am.normal[bi];
+  const ra=ap&&!!bm.root[ai],rb=bp&&!!am.root[bi];
+  if(skipped.has(id)){duplicateRows.push(row(id,ap?relevant(before,ai):[],bp?relevant(after,bi):[],'Дублирующийся ID — исключён из сопоставления (показаны блоки первой строки; вне фильтра)'));continue}
+  if(!va&&!vb&&!ra&&!rb)continue;
+  const a=ap?relevant(before,ai):[],b=bp?relevant(after,bi):[];
+  const af=a.filter(x=>x==='root'?ra:va),bf=b.filter(x=>x==='root'?rb:vb);
+  for(const code of delta(af,bf)){blockRemoved[code]++;blockRemovedIds[code].push(id)}
+  for(const code of delta(bf,af)){blockAdded[code]++;blockAddedIds[code].push(id)}
+  if(!ap&&bp){if(vb||rb)addedRows.push(row(id,[],bf,'Новый ID в реестре'));continue}
+  if(ap&&!bp){if(va||ra)goneRows.push(row(id,af,[],'ID выбыл из реестра'));continue}
+  if(va!==vb||ra!==rb){filterRows.push(row(id,a,b,'Изменилось попадание в фильтр'));continue}
+  if(!va&&!vb)continue;
+  const exited=delta(a,b),entered=delta(b,a);
+  if(!exited.length&&!entered.length){unchanged++;continue}
+  if([...exited,...entered].some(x=>bad.has(x))){ruleRows.push(row(id,exited,entered,'Изменены правила / зависимость или нет подписи'));continue}
+  // Root and death are real membership changes but not ordinary process stages.
+  const eligible=x=>!['root','dead'].includes(x);
+  if(exited.length===1&&entered.length===1&&eligible(exited[0])&&eligible(entered[0])){
+   const from=exited[0],to=entered[0],key=from+'|'+to;let f=flows.get(key);
+   if(!f){f={key,from,to,count:0,ids:[],beforeDebt:0,afterDebt:0,beforeKnown:0,afterKnown:0,source:'membership'};flows.set(key,f)}
+   f.count++;f.ids.push(id);const av=before.amt?.[ai],bv=after.amt?.[bi];if(av!=null&&Number.isFinite(Number(av))){f.beforeDebt+=Number(av);f.beforeKnown++}if(bv!=null&&Number.isFinite(Number(bv))){f.afterDebt+=Number(bv);f.afterKnown++}
+  }else if(!exited.length){entryRows.push(row(id,[],entered,'Добавился в блоки без установленного источника'))}
+  else if(!entered.length){exitRows.push(row(id,exited,[],'Выбыл из блоков без установленного получателя'))}
+  else{ambiguousRows.push(row(id,exited,entered,'Несколько изменений состава — маршрут неоднозначен'))}
+ }
+ for(const s of [before,after])for(const id of s.ids)if(!cleanID(id))missing++;
+ const order=[...flows.values()].sort((a,b)=>b.count-a.count||a.key.localeCompare(b.key));
+ return{beforeCount:Object.fromEntries(nodeIds.map(id=>[id,previousStats[id]?.count||0])),afterCount:Object.fromEntries(nodeIds.map(id=>[id,currentStats[id]?.count||0])),blockAdded,blockRemoved,blockAddedIds,blockRemovedIds,flows:order,newTotal:addedRows.length,goneTotal:goneRows.length,unchanged,ambiguous:ambiguousRows.length,ruleAffected:ruleRows.length,cleanMoves:order.reduce((s,f)=>s+f.count,0),missing,filterChanged:filterRows.length,skipped:duplicateRows.length,entryRows,exitRows,filterRows,duplicateRows,addedRows,goneRows,ambiguousRows,ruleRows,source:before.file+' → '+after.file};
+}
+function comparisonGroups(){return [
+ ['Новые в реестре',analysis.addedRows,'new'],['Выбыли из реестра',analysis.goneRows,'gone'],['Вход без источника',analysis.entryRows,'entry'],['Выход без получателя',analysis.exitRows,'exit'],['Неоднозначные',analysis.ambiguousRows,'other'],['Правила / нет подписи',analysis.ruleRows,'rules'],['Изменение фильтра',analysis.filterRows,'filter'],['Дубли ID',analysis.duplicateRows,'dup']
+]}
+function groupRowsForNode(rows,id){return (rows||[]).filter(r=>[r.from,r.to].some(v=>String(v).split(', ').includes(id)))}
+function indexCategoryCounts(){comparisonCounts=new Map();if(singleMode)return;for(const [,rows,kind] of comparisonGroups()){const m=new Map();for(const r of rows||[])for(const id of new Set([...String(r.from).split(', '),...String(r.to).split(', ')])){if(nodeMap.has(id))m.set(id,(m.get(id)||0)+1)}comparisonCounts.set(kind,m)}}
+function allChangeRows(){const rows=[];for(const f of analysis.flows)for(const id of f.ids)rows.push({id,from:f.from,to:f.to,kind:'Однозначная смена блока'});for(const [,group] of comparisonGroups())for(const row of group||[])rows.push(row);return rows}
 
 function setSchema(...snaps){
  const custom=snaps.filter(Boolean).some(s=>Array.isArray(s.nodesMeta));
@@ -93,7 +131,7 @@ function emptySingleAnalysis(s){
  return {beforeCount,afterCount,blockAdded,blockRemoved,blockAddedIds,blockRemovedIds,flows:[],newTotal:0,goneTotal:0,unchanged:0,ambiguous:0,ruleAffected:0,cleanMoves:0,missing:0,filterChanged:0,skipped:s.duplicate.size,addedRows:[],goneRows:[],ambiguousRows:[],ruleRows:[],source:s.file};
 }
 function syncCompareControls(){
- for(const el of $$('[data-mode="compare"],[data-action="compare"],[data-action="flows"],[data-action="ambiguous"],#playBtn,#prevBtn,#nextBtn,#flowSlider,#detailBtn,#exportBtn'))el.disabled=singleMode;
+ for(const el of $$('[data-mode="compare"],[data-action="compare"],[data-action="flows"],[data-action="ambiguous"],#playBtn,#detailBtn,#exportBtn,#focusFlows'))el.disabled=singleMode;
  const both=[current,previous].filter(Boolean);
  $('#minAmt').disabled=both.some(s=>!Array.isArray(s.amt));
  $('#deathFilter').disabled=both.some(s=>!Array.isArray(s.dd));
@@ -102,7 +140,7 @@ function syncCompareControls(){
 }
 function acceptSnapshots(cur,prev,source){
  if(!validSnap(cur)||prev&&!validSnap(prev))throw Error('Не получен корректный рассчитанный снимок.');
- singleMode=!prev;playing=false;collapsed=false;$('#collapseBtn').classList.remove('on');$('#collapseBtn').setAttribute('aria-pressed','false');
+ singleMode=!prev;playing=!motionReduced();focusOnly=false;activeRouteKey=null;collapsed=false;$('#collapseBtn').classList.remove('on');$('#collapseBtn').setAttribute('aria-pressed','false');
  setSchema(prev,cur);
  current=prepareSnapshot(cur);previous=prev?prepareSnapshot(prev):current;$('#welcome').hidden=true;$('#minimapBox').hidden=!prefs.minimap;restoreLayout();
  rawWarnings=[cur.warning,prev?.warning].filter(Boolean).join(" · ");
@@ -187,12 +225,12 @@ function renderDiagram(reset=false){if(!analysis)return;structureMotionKey='';
  const frag=document.createDocumentFragment();addStructuralEdges();
  for(const n of nodes){const p=viewPositions[n.id];if(!p)continue;const b=document.createElement('button');b.type='button';b.className='node';b.style.left=p.x+'px';b.style.top=p.y+'px';b.style.setProperty('--c',colors[n.k]);b.dataset.id=n.id;
  const a=analysis.afterCount[n.id],before=analysis.beforeCount[n.id],delta=a-before;const title=current?.labels?.[n.id]||n.t;const noRule=n.id!=="root"&&!current?.own?.[n.id]&&!current?.demo;
- b.innerHTML=`<div class="code">${esc(n.id)}</div><div class="node-name">${esc(title)}</div><div class="node-bottom"><span class="mini">${display==='compare'?'Было '+fmt(before):'Договоров'}</span><span class="count">${noRule?'—':fmt(a)}</span></div>${delta&&display==='compare'?`<span class="delta ${delta<0?'neg':''}">${delta>0?'+':''}${fmt(delta)}</span>`:''}`;
+ b.innerHTML=`<div class="code">${esc(n.id)}</div><div class="node-name">${esc(title)}</div><div class="node-bottom"><span class="mini">${display==='compare'?'Было '+fmt(before):'Договоров'}</span><span class="count">${noRule?'—':fmt(a)}</span></div>${display==='compare'&&(analysis.blockAdded[n.id]||analysis.blockRemoved[n.id])?`<span class="delta change-pair" title="Добавились / выбыли — уникальные ID, без дублей"><span class="plus">+${fmt(analysis.blockAdded[n.id])}</span><span class="minus">−${fmt(analysis.blockRemoved[n.id])}</span></span>`:''}`;
  b.title=title+(noRule?' · нет собственного условия расчёта':singleMode?' · строк '+fmt(a):' · было '+fmt(before)+' · стало '+fmt(a));b.addEventListener('click',()=>{if(!viewEdit)chooseNode(n.id,true)});b.addEventListener('pointerdown',e=>startCardMove(e,n.id));b.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse'&&!draggingView){hoveredNode=n.id;highlight()}});b.addEventListener('pointerleave',()=>{if(hoveredNode===n.id){hoveredNode=null;highlight()}});frag.appendChild(b)}layer.appendChild(frag);
  if(display==='vertical'||display==='compare'){for(const {x,title:text} of LANES){const e=document.createElement('div');e.className='lane-head';e.style.left=(x+laneOffset.x)+'px';e.style.top=(562+laneOffset.y)+'px';e.textContent=text;layer.appendChild(e)}}
  $('#boardTitle').textContent=display==='graph'?'Полная схема':display==='compare'?'Сравнение реестров':'Вертикальный обзор';
  $('#boardSub').textContent=nodes.length+' блоков · '+(current?.empty?'ожидание загрузки':current?.demo?'условные данные':singleMode?'локальный расчёт · строки реестра':'строки блоков · переходы по ID');$('#comparisonLabel').textContent=singleMode?(current?.file||'—')+' · '+(current.rulesName||'без предыдущего снимка'):(previous?.file||'—')+' → '+(current?.file||'—');
- setScale(scale);showFlow();highlight();drawMinimap();if(reset){if(display==='graph')fitAll();else{const target=window.innerWidth<850?1:Math.min(1,Math.max(.85,(board.clientWidth-24)/sz.w));setScale(target);const p=viewPositions[branch==='all'?'root':branch]||viewPositions.root;board.scrollLeft=Math.max(0,(p?.x||690)*scale-board.clientWidth*.5);board.scrollTop=branch==='all'?0:Math.max(0,(p?.y||0)*scale-32);}}}
+ setScale(scale);showFlow();highlight();drawMinimap();if(reset){if(display==='graph')fitAll();else if(display==='compare'){fitZoom()}else{const target=window.innerWidth<850?1:Math.min(1,Math.max(.85,(board.clientWidth-24)/sz.w));setScale(target);const p=viewPositions[branch==='all'?'root':branch]||viewPositions.root;board.scrollLeft=Math.max(0,(p?.x||690)*scale-board.clientWidth*.5);board.scrollTop=branch==='all'?0:Math.max(0,(p?.y||0)*scale-32);}}}
 function setScale(v){
  scale=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,Number(v)||1));canvas.style.transform='scale('+scale+')';
  // The scroll surface is sized in scaled world coordinates, not the transformed element's layout box.
@@ -206,13 +244,11 @@ function zoomAt(v,x=board.clientWidth/2,y=board.clientHeight/2){
 }
 function fitZoom(){const v=(board.clientWidth-20)/Math.max(1,worldSize.w);setScale(Math.min(1,v));board.scrollLeft=0;board.scrollTop=0;}
 function fitAll(){const w=Math.max(1,board.clientWidth-20),h=Math.max(1,board.clientHeight-20);setScale(Math.min(1,w/worldSize.w,h/worldSize.h));board.scrollLeft=0;board.scrollTop=0;updateMinimapViewport();saveViewSoon();}
-function pauseForManualNavigation(){if(display==='compare'&&playing){playing=false;showFlow()}}
+function pauseForManualNavigation(){/* The map has no automatic camera; manual navigation never pauses motion. */}
 function chooseNode(id,go){
  if(!byId[id])return;selected=id;hoveredNode=null;
  if(display==='compare'){
-  pauseForManualNavigation();
-  const ix=filteredFlows.findIndex(f=>f.from===id||f.to===id);
-  if(ix>=0){flowIndex=ix;showFlow()}
+  activeRouteKey=null;showFlow()
  }
  highlight();renderInspector();if(go)$('#inspector').classList.add('open');
 }
@@ -220,14 +256,14 @@ function highlight(){
  if(!analysis)return;
  const target=hoveredNode||selected,s=$('#search').value.trim().toLowerCase(),incoming=new Set(),outgoing=new Set();
  for(const e of structuralLinks()){if(e.to===target)incoming.add(e.from);if(e.from===target)outgoing.add(e.to)}
- const f=display==='compare'?filteredFlows[flowIndex]:null;
+ const routes=display==='compare'?displayedRoutes():[],f=routes.find(r=>r.key===activeRouteKey);const sourceIds=new Set(routes.map(r=>r.from)),targetIds=new Set(routes.map(r=>r.to));
  for(const e of $$('.node')){
   const id=e.dataset.id,n=byId[id],txt=(id+' '+(current?.labels?.[id]||n?.t||id)).toLowerCase();
   const okBranch=branch==='all'||branchOf(id)===branch||['root','dead'].includes(id);
-  const actual=!!f&&(id===f.from||id===f.to);
+  const actual=sourceIds.has(id)||targetIds.has(id);
   e.classList.toggle('collapsed',collapsed&&branch!=='all'&&!okBranch&&!actual);e.classList.toggle('dim',!actual&&id!==target&&!incoming.has(id)&&!outgoing.has(id)&&(!okBranch||(s&&!txt.includes(s))));
   e.classList.toggle('connection-in',incoming.has(id));e.classList.toggle('connection-out',outgoing.has(id));e.classList.toggle('connection-focus',id===target);
-  e.classList.toggle('route-source',f?.from===id);e.classList.toggle('route-target',f?.to===id);e.classList.toggle('selected',id===selected);e.classList.toggle('flight',actual);
+  e.classList.toggle('route-source',f?.from===id);e.classList.toggle('route-target',f?.to===id);e.classList.toggle('selected',id===selected);e.classList.toggle('flight',actual);e.classList.toggle('flow-origin',sourceIds.has(id));e.classList.toggle('flow-destination',targetIds.has(id));
  }
  for(const e of $$('.base-edge')){
   const into=e.dataset.b===target,out=e.dataset.a===target;
@@ -248,7 +284,7 @@ function motionPacket(group,d,color,duration,offset,radius){
 function syncStructuralMotion(target){
  const allowed=liveLinks&&display!=='compare'&&!motionReduced()&&!draggingView&&!viewEdit&&!current?.empty;
  $('#liveLinksBtn').hidden=false;$('#liveLinksBtn').classList.toggle('on',liveLinks);$('#liveLinksBtn').setAttribute('aria-pressed',String(liveLinks));
- $('#motionHint').textContent=display==='compare'?'Движение только по подтверждённым ID':'Анимация связей по правилам, не перемещение договоров';
+ $('#motionHint').textContent=display==='compare'?'Карта изменений между снимками · не текущие события':'Анимация связей по правилам, не перемещение договоров';
  if(!allowed){removeStructureMotion();return}
  const links=structuralLinks().filter(e=>(e.from===target||e.to===target)&&(!collapsed||branch==='all'||[e.from,e.to].every(id=>['root','dead'].includes(id)||branchOf(id)===branch))).slice(0,20);
  const key=display+'|'+target+'|'+motionSpeed+'|'+links.map(e=>e.from+'>'+e.to).join(',');
@@ -293,48 +329,75 @@ function bindCanvasNavigation(){
  board.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault()});
 }
 
-function showFlow(){
- svg.querySelectorAll('.movement-edge,.movement-glow,.movement-track,.marker,.click-edge,.route-defs,.cinematic-route').forEach(x=>x.remove());badges.replaceChildren();for(const n of $$('.node'))n.classList.remove('motion-source','motion-target');
- const f=filteredFlows[flowIndex],active=display==='compare'&&!singleMode;
- $('#motionPanel').hidden=!active;$('#routeStory').hidden=!active||!f;$('#replayRoute').disabled=!active||!f;$('#motionSpeed').disabled=!active||!f;
- $('#flowSlider').max=Math.max(0,filteredFlows.length-1);$('#flowSlider').value=flowIndex;
- $('#flowCount').textContent=filteredFlows.length?(flowIndex+1)+' / '+filteredFlows.length:'0';
- const label=id=>current?.labels?.[id]||byId[id]?.t||id;
- $('#flowTitle').textContent=f?f.from+' → '+f.to+' · '+label(f.from)+' → '+label(f.to)+' · '+fmt(f.count)+' договоров':'Однозначных переходов не обнаружено';
- $('#flowTitle').title=$('#flowTitle').textContent;
- $('#playBtn').textContent=playing?'Ⅱ Пауза':'▷ Воспроизвести';$('#playBtn').classList.toggle('on',playing);
- for(const id of ['prevBtn','nextBtn','flowSlider','detailBtn','playBtn'])$('#'+id).disabled=!active||!f;
- if(!active||!f){highlight();renderInspector();return}
- updateRouteStory(f,label);routeStarted=performance.now();
- const d=bezier(f.from,f.to,viewPositions,true);if(!d)return;
- const col='#a2e4cc',defs=document.createElementNS(svgNS,'defs');defs.setAttribute('class','route-defs');
- const arrow=document.createElementNS(svgNS,'marker');for(const [k,v] of Object.entries({id:'routeArrow',viewBox:'0 0 10 10',refX:'8.5',refY:'5',markerWidth:'9',markerHeight:'9',markerUnits:'userSpaceOnUse',orient:'auto-start-reverse'}))arrow.setAttribute(k,v);
- const tip=document.createElementNS(svgNS,'path');tip.setAttribute('d','M 0 1 L 9 5 L 0 9 Z');tip.setAttribute('fill',col);arrow.appendChild(tip);defs.appendChild(arrow);svg.appendChild(defs);
- svg.appendChild(pathEl(d,'movement-glow',col));const track=pathEl(d,'movement-track',col);track.setAttribute('marker-end','url(#routeArrow)');svg.appendChild(track);
- const motionAllowed=playing&&!motionReduced();
- if(motionAllowed){
-  const g=document.createElementNS(svgNS,'g');g.setAttribute('class','cinematic-route');
-  const trail=pathEl(d,'signal-trail real-trail',col);trail.setAttribute('pathLength','100');trail.style.setProperty('--speed',(3.6/motionSpeed)+'s');g.appendChild(trail);
-  const fire=[];const dur=3.6/motionSpeed;
-  for(let i=0;i<4;i++)fire.push(motionPacket(g,d,i===0?'#edfff7':'#a2e4cc',dur,i*dur*.10,i===0?5.5:3.2));
-  svg.appendChild(g);fire.forEach(fn=>fn());
-  for(const n of $$('.node')){if(n.dataset.id===f.from){n.style.setProperty('--cycle',dur+'s');n.classList.add('motion-source')}if(n.dataset.id===f.to){n.style.setProperty('--cycle',dur+'s');n.classList.add('motion-target')}}
+function displayedRoutes(){return (filteredFlows||[]).filter(f=>!focusOnly||f.from===selected||f.to===selected)}
+function routePath(f,reversePair){
+ const a=viewPositions[f.from],b=viewPositions[f.to];if(!a||!b)return '';
+ const dx=b.x-a.x,dy=b.y-a.y;
+ if(!reversePair&&Math.abs(dx)<CARD_W*.65)return bezier(f.from,f.to,viewPositions,true);
+ if(Math.abs(dx)<CARD_W*.65){const sign=f.from.localeCompare(f.to)<0?1:-1,sx=a.x+sign*CARD_W/2,ex=b.x+sign*CARD_W/2,sy=a.y+CARD_H*.5,ey=b.y+CARD_H*.5,g=sign>0?Math.max(sx,ex)+25:Math.min(sx,ex)-25;return 'M'+sx+' '+sy+' H'+g+' V'+ey+' H'+(ex+sign*5)}
+ const dir=dx>0?1:-1,offset=reversePair?22:0,sx=a.x+dir*CARD_W/2,ex=b.x-dir*(CARD_W/2+5),sy=a.y+CARD_H/2+offset,ey=b.y+CARD_H/2+offset;
+ if(Math.abs(dx)>CARD_W*1.45){const g1=sx+dir*22,g2=ex-dir*22,channel=a.y+CARD_H+12+(reversePair?(dir>0?0:9):0);return 'M'+sx+' '+sy+' H'+g1+' V'+channel+' H'+g2+' V'+ey+' H'+ex}
+ return 'M'+sx+' '+sy+' C'+(sx+dir*40)+' '+sy+','+(ex-dir*40)+' '+ey+','+ex+' '+ey;
+}
+function badgeLocation(track,f,placed){
+ const a=viewPositions[f.from],b=viewPositions[f.to],fallback={x:(a.x+b.x)/2,y:(a.y+b.y+CARD_H)/2};
+ if(typeof track.getTotalLength!=='function')return fallback;
+ const len=track.getTotalLength(),cards=Object.values(viewPositions),width=26+fmt(f.count).length*8;
+ const inside=(x,y)=>cards.some(p=>Math.abs(x-p.x)<CARD_W/2+width/2+5&&y>p.y-15&&y<p.y+CARD_H+15)||placed.some(p=>Math.abs(x-p.x)<(p.w+width)/2+8&&Math.abs(y-p.y)<27);
+ for(const fraction of [.5,.35,.65,.22,.78,.12,.88]){const p=track.getPointAtLength(len*fraction);if(!inside(p.x,p.y)){placed.push({x:p.x,y:p.y,w:width});return p}}
+ return null;
+}
+function renderCategories(){
+ const box=$('#changeCategories');box.replaceChildren();
+ const note=document.createElement('span');note.className='categories-caption';note.textContent='Другие изменения · все направления';box.appendChild(note);
+ for(const [name,rows,kind] of comparisonGroups()){
+  const n=rows?.length||0;if(!n)continue;const b=document.createElement('button');b.className='category-chip '+kind;b.innerHTML='<span>'+esc(name)+'</span> <b>'+fmt(n)+'</b>';b.addEventListener('click',()=>openRows(name,'Отдельная категория. Линия между блоками не строится без однозначного соответствия.',rows));box.appendChild(b);
  }
- const hit=pathEl(d,'click-edge');hit.addEventListener('click',()=>{selected=f.to;renderInspector();openFlowDetails(f)});svg.appendChild(hit);
- const a=viewPositions[f.from],b=viewPositions[f.to],badge=document.createElement('button');badge.className='flowbadge';
- let x=(a.x+b.x)/2,y=(a.y+b.y+CARD_H)/2;if(typeof track.getTotalLength==='function'){const pt=track.getPointAtLength(track.getTotalLength()*.5);x=pt.x;y=pt.y}
- badge.style.left=x+'px';badge.style.top=y+'px';badge.textContent='→ '+fmt(f.count);badge.title='Открыть список ID';badge.addEventListener('click',()=>openFlowDetails(f));badges.appendChild(badge);highlight();renderInspector();
+ if(box.children.length===1&&!analysis.missing){box.replaceChildren();return}
+ if(analysis.missing){const e=document.createElement('span');e.className='category-chip';e.textContent='Строк без ID: '+fmt(analysis.missing);e.title='Без идентификатора сравнить договор невозможно (оба файла)';box.appendChild(e)}
+}
+function showFlow(){
+ svg.querySelectorAll('.movement-edge,.movement-glow,.movement-track,.marker,.click-edge,.route-defs,.cinematic-route,.map-route').forEach(x=>x.remove());badges.replaceChildren();mapPaths=[];
+ const active=display==='compare'&&!singleMode;$('#motionPanel').hidden=!active;$('#routeStory').hidden=true;
+ $('#playBtn').textContent=playing?'Ⅱ Движение':'▷ Движение';$('#playBtn').classList.toggle('on',playing);$('#playBtn').setAttribute('aria-pressed',String(playing));
+ $('#focusFlows').classList.toggle('on',focusOnly);$('#focusFlows').setAttribute('aria-pressed',String(focusOnly));
+ if(!active){highlight();renderInspector();return}
+ const routes=displayedRoutes(),f=routes.find(x=>x.key===activeRouteKey);
+ $('#flowCount').textContent=fmt(routes.length)+' маршрутов · '+fmt(routes.reduce((s,f)=>s+f.count,0))+' ID';
+ $('#flowTitle').textContent=routes.length?('Все линии остаются на схеме. Нажмите линию или число для деталей.'+(routes.length>100?' Анимация 100 крупнейших и выбранного маршрута.':'')):'Нет однозначных маршрутов в текущем представлении. Проверьте отдельные категории.';
+ $('#flowTitle').title='Сравнение двух снимков, не события в реальном времени.';
+ renderCategories();
+ const defs=document.createElementNS(svgNS,'defs');defs.setAttribute('class','route-defs');
+ for(const [id,c] of [['routeArrow','#78cbb2'],['routeArrowSelected','#d9fff0']]){
+  const arrow=document.createElementNS(svgNS,'marker');for(const [k,v] of Object.entries({id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'10',markerHeight:'10',markerUnits:'userSpaceOnUse',orient:'auto'}))arrow.setAttribute(k,v);
+  const p=document.createElementNS(svgNS,'path');p.setAttribute('d','M0 0 L10 5 L0 10 Z');p.setAttribute('fill',c);arrow.appendChild(p);defs.appendChild(arrow)
+ }svg.appendChild(defs);
+ const keys=new Set(routes.map(f=>f.key)),max=Math.max(1,...routes.map(f=>f.count)),placed=[];
+ const ordered=[...routes].sort((a,b)=>Number(a.key===activeRouteKey)-Number(b.key===activeRouteKey)||a.count-b.count);
+ const animate=playing&&!motionReduced();const animatedKeys=new Set(routes.slice(0,100).map(f=>f.key));const group=document.createElementNS(svgNS,'g');group.setAttribute('class','map-route');svg.appendChild(group);
+ for(const route of ordered){
+  const d=routePath(route,keys.has(route.to+'|'+route.from));if(!d)continue;const chosen=route.key===activeRouteKey,width=2.5+5*Math.sqrt(route.count/max);
+  const g=document.createElementNS(svgNS,'g');g.setAttribute('class','flow-route'+(chosen?' focused':''));
+  g.dataset.key=route.key;g.dataset.from=route.from;g.dataset.to=route.to;
+  const track=pathEl(d,'map-track');track.style.setProperty('--route-width',width+'px');track.setAttribute('marker-end','url(#'+(chosen?'routeArrowSelected':'routeArrow')+')');g.appendChild(track);
+  if(animate&&(animatedKeys.has(route.key)||chosen)){const pulse=pathEl(d,'map-pulse');pulse.setAttribute('pathLength','100');pulse.style.setProperty('--route-width',Math.max(2,width-1)+'px');pulse.style.setProperty('--speed',(3.5/motionSpeed)+'s');pulse.style.setProperty('--delay',(-((route.from.length*7+route.to.length*11)%13)/5)+'s');g.appendChild(pulse)}
+  const hit=pathEl(d,'click-edge');hit.setAttribute('tabindex','0');hit.setAttribute('role','button');hit.setAttribute('aria-label',route.from+' → '+route.to+': '+route.count+' ID');const t=document.createElementNS(svgNS,'title');t.textContent=(byId[route.from]?.t||route.from)+' → '+(byId[route.to]?.t||route.to)+' · '+fmt(route.count);hit.appendChild(t);
+  const select=()=>{activeRouteKey=route.key;flowIndex=filteredFlows.indexOf(route);if(!focusOnly)selected=route.to;showFlow();openFlowDetails(route)};
+  hit.addEventListener('click',select);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select()}});g.appendChild(hit);group.appendChild(g);
+  const pt=badgeLocation(track,route,placed);
+  if(pt){const badge=document.createElement('button');badge.className='flowbadge map-badge'+(chosen?' focused':'');badge.dataset.key=route.key;badge.style.left=pt.x+'px';badge.style.top=pt.y+'px';badge.textContent='→ '+fmt(route.count);badge.title=t.textContent;badge.addEventListener('click',select);badges.appendChild(badge)}
+  mapPaths.push(g)
+ }
+ if(f){$('#routeStory').hidden=false;updateRouteStory(f,id=>current?.labels?.[id]||byId[id]?.t||id)}
+ highlight();renderInspector();
 }
 function updateRouteStory(f,label){
- const story=$('#routeStory');story.classList.remove('running');
- $('#storyFrom').textContent=f.from+' · '+label(f.from);
- $('#storyTo').textContent=f.to+' · '+label(f.to);
+ $('#storyFrom').textContent=f.from+' · '+label(f.from);$('#storyTo').textContent=f.to+' · '+label(f.to);
  $('#storyMoved').textContent=fmt(f.count)+' договоров';
  $('#storyFromCount').textContent='Весь блок: '+fmt(analysis.beforeCount[f.from])+' → '+fmt(analysis.afterCount[f.from]);
  $('#storyToCount').textContent='Весь блок: '+fmt(analysis.beforeCount[f.to])+' → '+fmt(analysis.afterCount[f.to]);
- story.style.setProperty('--cycle',(3.6/motionSpeed)+'s');
- if(playing&&!motionReduced()){void story.offsetWidth;story.classList.add('running')}
 }
+
 function focusRoute(f){
  const a=viewPositions[f?.from],b=viewPositions[f?.to];if(!a||!b)return;
  const left=Math.min(a.x,b.x)-CARD_W/2-24,right=Math.max(a.x,b.x)+CARD_W/2+24,top=Math.min(a.y,b.y)-24,bottom=Math.max(a.y,b.y)+CARD_H+24;
@@ -342,31 +405,36 @@ function focusRoute(f){
  setScale(Math.max(.25,Math.min(scale,desired)));
  board.scrollTo({left:Math.max(0,(left+right)*scale/2-board.clientWidth/2),top:Math.max(0,(top+bottom)*scale/2-board.clientHeight/2),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
+function renderRouteList(){
+ const list=$('#routesList'),q=$('#routeSearch').value.trim().toLowerCase();list.replaceChildren();const label=id=>current?.labels?.[id]||byId[id]?.t||id;
+ for(const [i,f] of filteredFlows.entries()){
+  if(q&&!(f.from+' '+f.to+' '+label(f.from)+' '+label(f.to)).toLowerCase().includes(q))continue;
+  const b=document.createElement('button');b.className='flowrow route-option'+(f.key===activeRouteKey?' active':'');b.type='button';b.innerHTML='<span><span class="flowlist-title">'+esc(f.from)+' → '+esc(f.to)+'</span><span class="flowlist-sub">'+esc(label(f.from))+' → '+esc(label(f.to))+'</span></span><b>'+fmt(f.count)+'</b>';b.addEventListener('click',()=>{$('#routesDialog').close();selectFlow(i,true)});list.appendChild(b)
+ }
+}
 function openRoutes(){
- $('#routesSummary').textContent='По всем направлениям: '+fmt(analysis.cleanMoves)+' однозначных переходов · '+fmt(analysis.newTotal)+' новых ID · '+fmt(analysis.goneTotal)+' выбывших ID. В текущем списке: '+fmt(filteredFlows.length)+' маршрутов, '+fmt(filteredFlows.reduce((s,f)=>s+f.count,0))+' договоров. Показаны только однозначные изменения состава блоков.';
- const list=$('#routesList');list.replaceChildren();const label=id=>current?.labels?.[id]||byId[id]?.t||id;
- filteredFlows.forEach((f,i)=>{const b=document.createElement('button');b.className='flowrow route-option'+(i===flowIndex?' active':'');b.type='button';b.innerHTML='<span><span class="flowlist-title">'+esc(f.from)+' → '+esc(f.to)+'</span><span class="flowlist-sub">'+esc(label(f.from))+' → '+esc(label(f.to))+'</span></span><b>'+fmt(f.count)+'</b>';b.addEventListener('click',()=>{$('#routesDialog').close();setMode('compare');selectFlow(i,true)});list.appendChild(b)});
- $('#routesDialog').showModal();
+ $('#routesSummary').textContent='По всем направлениям: '+fmt(analysis.cleanMoves)+' ID с однозначной сменой блоков. В списке: '+fmt(filteredFlows.length)+' маршрутов. Новые, выбывшие и неопределённые случаи вынесены отдельно.';
+ $('#routeSearch').value='';renderRouteList();$('#routesDialog').showModal()
 }
 function flowsForBranch(){return analysis?.flows.filter(f=>branch==='all'||branchOf(f.from)===branch||branchOf(f.to)===branch)||[]}
 function syncFlows(){filteredFlows=flowsForBranch();flowIndex=Math.max(0,Math.min(filteredFlows.length-1,flowIndex));showFlow()}
-function selectFlow(i,focus=true){if(!filteredFlows.length){flowIndex=0;showFlow();return}flowIndex=((i%filteredFlows.length)+filteredFlows.length)%filteredFlows.length;if(display==='compare')selected=filteredFlows[flowIndex].to;showFlow();if(focus&&display==='compare')focusRoute(filteredFlows[flowIndex]);}
-function renderInspector(){if(!analysis)return;const n=byId[selected],from=analysis.beforeCount[selected],to=analysis.afterCount[selected],delta=to-from;if(singleMode){const noRule=selected!=='root'&&!current.own?.[selected];$('#inspectorBody').innerHTML=`<div class="selected-block" style="--sel:${colors[n.k]}"><small># ${esc(n.id)}</small><h2>${esc(current.labels?.[n.id]||n.t)}</h2><p>${esc(n.rule||'Нет собственного критерия')}</p></div><div class="sect"><h3>Текущий реестр</h3><h2>${noRule?'—':fmt(to)}</h2><p>${noRule?'Блок не имеет собственного условия или исключения.':'Строк по действующим правилам'}</p></div><div class="sect"><h3>Сравнение</h3><p>Загрузите предыдущий реестр, чтобы увидеть переходы.</p>${rawWarnings?'<p>'+esc(rawWarnings)+'</p>':''}</div>`;attachBlockTools(n);return;}const incoming=analysis.flows.filter(f=>f.to===selected).slice(0,8),outgoing=analysis.flows.filter(f=>f.from===selected).slice(0,8);let h=`<div class="selected-block" style="--sel:${colors[n.k]}"><small>Блок ${esc(n.id)}</small><h2>${esc(current?.labels?.[n.id]||n.t)}</h2><p>${esc(n.rule||'Условия отображаются как ориентир из исходной схемы. Авторитетный расчёт — только в исходном снимке.')}</p></div><div class="inspector-metrics"><div><b>${fmt(from)}</b><small>Было</small></div><div><b>${fmt(to)}</b><small>Стало</small></div><div><b style="color:${delta>=0?'var(--green)':'var(--red)'}">${delta>0?'+':''}${fmt(delta)}</b><small>Изменение</small></div></div>`;
+function selectFlow(i,focus=true){if(!filteredFlows.length){flowIndex=0;activeRouteKey=null;showFlow();return}flowIndex=((i%filteredFlows.length)+filteredFlows.length)%filteredFlows.length;const f=filteredFlows[flowIndex];activeRouteKey=f.key;focusOnly=false;if(display==='compare')selected=f.to;showFlow();if(focus&&display==='compare')focusRoute(f)}
+function renderInspector(){if(!analysis)return;const n=byId[selected],from=analysis.beforeCount[selected],to=analysis.afterCount[selected],delta=to-from;if(singleMode){const noRule=selected!=='root'&&!current.own?.[selected];$('#inspectorBody').innerHTML=`<div class="selected-block" style="--sel:${colors[n.k]}"><small># ${esc(n.id)}</small><h2>${esc(current.labels?.[n.id]||n.t)}</h2><p>${esc(n.rule||'Нет собственного критерия')}</p></div><div class="sect"><h3>Текущий реестр</h3><h2>${noRule?'—':fmt(to)}</h2><p>${noRule?'Блок не имеет собственного условия или исключения.':'Строк по действующим правилам'}</p></div><div class="sect"><h3>Сравнение</h3><p>Загрузите предыдущий реестр, чтобы увидеть переходы.</p>${rawWarnings?'<p>'+esc(rawWarnings)+'</p>':''}</div>`;attachBlockTools(n);return;}const incoming=analysis.flows.filter(f=>f.to===selected),outgoing=analysis.flows.filter(f=>f.from===selected);let h=`<div class="selected-block" style="--sel:${colors[n.k]}"><small>Блок ${esc(n.id)}</small><h2>${esc(current?.labels?.[n.id]||n.t)}</h2><p>${esc(n.rule||'Условия отображаются как ориентир из исходной схемы. Авторитетный расчёт — только в исходном снимке.')}</p></div><div class="inspector-metrics"><div><b>${fmt(from)}</b><small>Было</small></div><div><b>${fmt(to)}</b><small>Стало</small></div><div><b style="color:${delta>=0?'var(--green)':'var(--red)'}">${delta>0?'+':''}${fmt(delta)}</b><small>Изменение</small></div></div>`;
  h+=`<div class="sect"><h3>Изменения состава блока</h3><div class="info">Добавились: <b style="color:var(--green)">${fmt(analysis.blockAdded[selected])}</b><br/>Выбыли: <b style="color:var(--red)">${fmt(analysis.blockRemoved[selected])}</b><br/>Разница показывает изменение численности, а не обязательно переход на следующий этап.</div><button class="btn" data-blockdetails>Посмотреть ID</button></div>`;
  h+=`<div class="sect"><h3>Подтверждённые переходы</h3>`;
- const listed=[...incoming,...outgoing].sort((a,b)=>b.count-a.count).slice(0,12);h+=listed.length?listed.map(f=>`<button class="flowrow ${filteredFlows[flowIndex]?.key===f.key?'active':''}" data-flowkey="${esc(f.key)}"><span><span class="flowlist-title">${esc(f.from)} → ${esc(f.to)}</span><span class="flowlist-sub">${esc(byId[f.from]?.t||f.from)} → ${esc(byId[f.to]?.t||f.to)}</span></span><b>${fmt(f.count)}</b></button>`).join(''):'<div class="empty">Однозначных переходов для блока не выявлено. Возможно, изменился только состав или несколько блоков одновременно.</div>';
- h+=`</div><div class="sect"><h3>Как рассчитано</h3><p>В исходном коде «Брать из блока», исключения и правила И/ИЛИ влияют на расчёт. Эти значения получены из уже рассчитанных наборов. При множественном изменении блоков переход не выдумывается.</p></div>`;
- $('#inspectorBody').innerHTML=h;attachBlockTools(n);$('#inspectorBody').querySelector('[data-blockdetails]')?.addEventListener('click',()=>openBlockDetails(selected));$('#inspectorBody').querySelectorAll('[data-flowkey]').forEach(el=>el.addEventListener('click',()=>{const f=analysis.flows.find(x=>x.key===el.dataset.flowkey);if(!f)return;display='compare';setModeButtons();renderDiagram();let ix=filteredFlows.findIndex(x=>x.key===f.key);if(ix<0){branch='all';setBranchButtons();syncFlows();ix=filteredFlows.findIndex(x=>x.key===f.key)}selectFlow(ix);$('#inspector').classList.remove('open')}));}
+ const listed=[...incoming,...outgoing].sort((a,b)=>b.count-a.count);h+=listed.length?listed.map(f=>`<button class="flowrow ${activeRouteKey===f.key?'active':''}" data-flowkey="${esc(f.key)}"><span><span class="flowlist-title">${esc(f.from)} → ${esc(f.to)}</span><span class="flowlist-sub">${esc(byId[f.from]?.t||f.from)} → ${esc(byId[f.to]?.t||f.to)}</span></span><b>${fmt(f.count)}</b></button>`).join(''):'<div class="empty">Однозначных переходов для блока не выявлено. Возможно, изменился только состав или несколько блоков одновременно.</div>';
+ h+=`</div><div class="sect"><h3>Другие изменения блока</h3>`;for(const [name,rows,kind] of comparisonGroups()){const n=comparisonCounts.get(kind)?.get(selected)||0;if(n)h+='<button class="flowrow" data-category="'+kind+'"><span>'+esc(name)+'</span><b>'+fmt(n)+'</b></button>'}h+=`</div><div class="sect"><h3>Как рассчитано</h3><p>В исходном коде «Брать из блока», исключения и правила И/ИЛИ влияют на расчёт. Эти значения получены из уже рассчитанных наборов. При множественном изменении блоков переход не выдумывается.</p></div>`;
+ $('#inspectorBody').innerHTML=h;attachBlockTools(n);$('#inspectorBody').querySelectorAll('[data-category]').forEach(b=>b.addEventListener('click',()=>{const item=comparisonGroups().find(x=>x[2]===b.dataset.category);if(item)openRows(item[0]+' · '+n.t,'Отдельные изменения состава, без предположения о маршруте.',groupRowsForNode(item[1],n.id))}));$('#inspectorBody').querySelector('[data-blockdetails]')?.addEventListener('click',()=>openBlockDetails(selected));$('#inspectorBody').querySelectorAll('[data-flowkey]').forEach(el=>el.addEventListener('click',()=>{const f=analysis.flows.find(x=>x.key===el.dataset.flowkey);if(!f)return;display='compare';setModeButtons();renderDiagram();let ix=filteredFlows.findIndex(x=>x.key===f.key);if(ix<0){branch='all';setBranchButtons();syncFlows();ix=filteredFlows.findIndex(x=>x.key===f.key)}selectFlow(ix);$('#inspector').classList.remove('open')}));}
 function setModeButtons(){$$('[data-mode]').forEach(b=>{b.classList.toggle('on',b.dataset.mode===display);b.setAttribute('aria-pressed',String(b.dataset.mode===display))});$$('[data-workspace]').forEach(b=>b.classList.toggle('active',b.dataset.workspace===(display==='compare'?'changes':'funnel')));document.body.dataset.mode=display;}
 function setBranchButtons(){$$('[data-branch]').forEach(b=>b.classList.toggle('active',b.dataset.branch===branch));}
-function setMode(m){if(singleMode&&m==='compare'){setStatus('Для сравнения требуется предыдущий реестр');return}display=m;setModeButtons();renderDiagram(true);if(m==='compare'&&filteredFlows.length)selectFlow(flowIndex,true);saveViewSoon()}
+function setMode(m){if(singleMode&&m==='compare'){setStatus('Для сравнения требуется предыдущий реестр');return}display=m;setModeButtons();renderDiagram(true);if(m==='compare'){activeRouteKey=null;focusOnly=false;showFlow();fitZoom()}saveViewSoon()}
 function setStatus(s){$('#status').textContent=s}
 function openRows(title,note,rows,getAll){$('#detailsTitle').textContent=title;$('#detailsNote').textContent=note;const body=$('#detailsRows');body.replaceChildren();const arr=rows.slice(0,200);arr.forEach((r,i)=>{const tr=document.createElement('tr');for(const v of [i+1,r.id,r.from,r.to,r.kind]){const td=document.createElement('td');td.textContent=v;tr.appendChild(td)}body.appendChild(tr)});window.__downloadRows=getAll||(()=>rows);$('#detailsDialog').showModal();}
-function openFlowDetails(f){openRows(`Переход ${f.from} → ${f.to} · ${fmt(f.count)} ID`,'Обнаружена однозначная смена принадлежности к двум блокам. Это не обязательно физический «переход по стрелке» в рабочем процессе.',f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})),()=>f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})));}
+function openFlowDetails(f){openRows(`Переход ${f.from} → ${f.to} · ${fmt(f.count)} ID`,'Однозначная смена принадлежности по двум снимкам. Промежуточные этапы и время движения неизвестны. Сумма по этим ID: было '+(f.beforeKnown?fmt(Math.round(f.beforeDebt))+' ₽ ('+fmt(f.beforeKnown)+' ID)':'—')+'; стало '+(f.afterKnown?fmt(Math.round(f.afterDebt))+' ₽ ('+fmt(f.afterKnown)+' ID)':'—')+'.',f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})),()=>f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})));}
 function openBlockDetails(code){const add=analysis.blockAddedIds[code].map(id=>({id,from:'—',to:code,kind:'Добавился в блок'})),rem=analysis.blockRemovedIds[code].map(id=>({id,from:code,to:'—',kind:'Выбыл из блока'}));openRows(`Изменения блока ${code}`,'Первые 200 записей показаны на экране. CSV содержит весь список однозначно сопоставленных ID; дубли исключены из сравнения.',add.concat(rem));}
 function csvSafe(v){const raw=String(v??''),s=/^[=+@-]/.test(raw)&&!/^[-+]?\d+(\.\d+)?$/.test(raw)?"'"+raw:raw;return/[;"\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 function downloadRows(rows,name){const head=['ID договора','Блок до','Блок после','Категория','Сумма долга + ГП','Дата смерти','Цессия'];const lines=[head,...rows.map(r=>[r.id,r.from,r.to,r.kind,r.amount??'',r.death??'',r.cession??''])].map(row=>row.map(csvSafe).join(';')).join('\r\n');const b=new Blob(['\ufeff'+lines],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000);}
-function exportAll(){const rows=analysis.flows.flatMap(f=>f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})));for(const group of [analysis.ambiguousRows,analysis.ruleRows,analysis.addedRows,analysis.goneRows])for(const row of group)rows.push(row);downloadRows(rows,'NEON_FLOW_изменения.csv');}
+function exportAll(){downloadRows(allChangeRows(),'NEON_FLOW_изменения.csv')}
 function parseCSV(text){const delimiter=text.split(/\r?\n/,1)[0].includes(';')?';':',';const rows=[];let row=[],v='',q=false;for(let i=0;i<text.length;i++){const c=text[i];if(q){if(c==='"'&&text[i+1]==='"'){v+='"';i++}else if(c==='"')q=false;else v+=c}else if(c==='"')q=true;else if(c===delimiter){row.push(v);v=''}else if(c==='\r'||c==='\n'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(v);if(row.some(x=>x!==''))rows.push(row);row=[];v=''}else v+=c}if(v||row.length){row.push(v);rows.push(row)}return rows;}
 function excelCol(c){let n=0;for(const x of c)n=n*26+x.charCodeAt(0)-64;return n-1}
 async function parseXlsx(file){if(typeof JSZip==='undefined')throw Error('Не найдена библиотека JSZip');if(file.size>35*1024*1024)throw Error('Для больших Excel лучше использовать data.bin из оригинального сайта: этот тестовый парсер ограничен 35 МБ.');const zip=await JSZip.loadAsync(file);const get=async name=>{const f=zip.file(name);return f?await f.async('string'):null};const ss=await get('xl/sharedStrings.xml');const parser=new DOMParser(),shared=[];if(ss){const doc=parser.parseFromString(ss,'application/xml');for(const si of [...doc.getElementsByTagName('si')]){shared.push([...si.getElementsByTagName('t')].map(x=>x.textContent).join(''))}}
@@ -384,23 +452,21 @@ async function readInput(file){const lower=file.name.toLowerCase();let raw;if(lo
  if(validSnap(raw))return{snapshot:raw,previous:validSnap(raw.previous)?raw.previous:null};if(validSnap(raw.current))return{snapshot:raw.current,previous:validSnap(raw.previous)?raw.previous:null};throw Error('Неверная структура публикации: нужны ids, map, sets');}
 let imported={old:null,new:null};async function loadChoice(file,which){const textEl=$(which==='old'?'#priorInfo':'#currentInfo');const loading=$('#loadInfo');loading.textContent='Чтение: '+file.name+'…';$('#applyFiles').disabled=true;try{const result=await readInput(file);imported[which]=result;textEl.textContent=`✓ ${file.name} · ${fmt(result.snapshot.n)} строк${result.previous?' · есть предыдущая публикация':''}${result.snapshot.warning?' · '+result.snapshot.warning:''}`;loading.textContent='Файл обработан локально.';$('#applyFiles').disabled=!(imported.new||imported.old)}catch(e){imported[which]=null;textEl.textContent='Ошибка: '+e.message;loading.textContent='Данные не изменены';$('#applyFiles').disabled=!(imported.new||imported.old)}}
 async function applyImports(){try{const cur=imported.new?.snapshot||imported.old?.snapshot;const prev=imported.old&&imported.new?imported.old.snapshot:imported.new?.previous||imported.old?.previous;if(!cur)throw Error('Выберите текущий снимок.');acceptSnapshots(cur,prev,'Загруженные снимки');$('#uploadDialog').close();}catch(e){$('#loadInfo').textContent='Ошибка сравнения: '+e.message}}
-function recompute(reset=false){if(!previous||!current)return;const start=performance.now();maskCache.clear();distributionCache.clear();currentStats=W.allStats(current,masksFor(current),nodeIds);previousStats=previous===current?currentStats:W.allStats(previous,masksFor(previous),nodeIds);analysis=singleMode?emptySingleAnalysis(current):analyze(previous,current);if(reset)flowIndex=0;syncFlows();renderDiagram(reset);if(reset&&display==='compare'&&filteredFlows.length)selectFlow(flowIndex,true);renderInspector();updateDataSummary();if(current.empty){setStatus('Загрузите реестр для начала работы.');return}if(singleMode){setStatus('Текущий реестр рассчитан локально · '+fmt(current.n)+' строк · '+(rawWarnings?'Предупреждения: '+rawWarnings:'для сравнения загрузите предыдущий реестр'));return;}setStatus(`${current.demo?'Демо':'Реальные наборы'} · ${fmt(analysis.cleanMoves)} однозначных изменений · ${fmt(analysis.ambiguous)} неоднозначных · ${fmt(analysis.ruleAffected)} затронуты правилами · дублей ID исключено ${fmt(analysis.skipped)} · обработано за ${((performance.now()-start)/1000).toFixed(1)} с`)}
-let timer=null;function turnDemo(){singleMode=false;rawWarnings='';playing=false;setSchema();const pair=makeDemo();previous=prepareSnapshot(pair[0]);current=prepareSnapshot(pair[1]);$('#welcome').hidden=true;$('#minAmt').value='';$('#deathFilter').value='all';cessionSelected.clear();restoreLayout();syncCompareControls();$('#sourceLabel').textContent='Демо · условные данные';display='vertical';branch='all';collapsed=false;$('#branchMobile').value='all';setBranchButtons();setModeButtons();recompute(true)}
+function recompute(reset=false){if(!previous||!current)return;const start=performance.now();maskCache.clear();distributionCache.clear();currentStats=W.allStats(current,masksFor(current),nodeIds);previousStats=previous===current?currentStats:W.allStats(previous,masksFor(previous),nodeIds);analysis=singleMode?emptySingleAnalysis(current):analyze(previous,current);indexCategoryCounts();if(reset)flowIndex=0;syncFlows();renderDiagram(reset);if(reset&&display==='compare')fitZoom();renderInspector();updateDataSummary();if(current.empty){setStatus('Загрузите реестр для начала работы.');return}if(singleMode){setStatus('Текущий реестр рассчитан локально · '+fmt(current.n)+' строк · '+(rawWarnings?'Предупреждения: '+rawWarnings:'для сравнения загрузите предыдущий реестр'));return;}setStatus(`${current.demo?'Демо':'Реальные наборы'} · ${fmt(analysis.cleanMoves)} однозначных изменений · ${fmt(analysis.ambiguous)} неоднозначных · ${fmt(analysis.ruleAffected)} затронуты правилами · дублей ID исключено ${fmt(analysis.skipped)} · обработано за ${((performance.now()-start)/1000).toFixed(1)} с`)}
+let timer=null;function turnDemo(){singleMode=false;rawWarnings='';playing=!motionReduced();focusOnly=false;activeRouteKey=null;setSchema();const pair=makeDemo();previous=prepareSnapshot(pair[0]);current=prepareSnapshot(pair[1]);$('#welcome').hidden=true;$('#minAmt').value='';$('#deathFilter').value='all';cessionSelected.clear();restoreLayout();syncCompareControls();$('#sourceLabel').textContent='Демо · условные данные';display='vertical';branch='all';collapsed=false;$('#branchMobile').value='all';setBranchButtons();setModeButtons();recompute(true)}
 $$('[data-mode]').forEach(b=>b.addEventListener('click',()=>setMode(b.dataset.mode)));
-function chooseBranch(value){branch=value;saveViewSoon();$('#branchMobile').value=value;setBranchButtons();flowIndex=0;syncFlows();highlight();if(display==='compare'&&filteredFlows.length){selectFlow(0,true);return}const p=viewPositions[value==='all'?'root':value];if(p)board.scrollTo({left:Math.max(0,p.x*scale-board.clientWidth/2),top:Math.max(0,(p.y-22)*scale),behavior:'smooth'});}
+function chooseBranch(value){branch=value;saveViewSoon();$('#branchMobile').value=value;setBranchButtons();flowIndex=0;syncFlows();highlight();if(display==='compare'){activeRouteKey=null;showFlow();fitZoom();return}const p=viewPositions[value==='all'?'root':value];if(p)board.scrollTo({left:Math.max(0,p.x*scale-board.clientWidth/2),top:Math.max(0,(p.y-22)*scale),behavior:'smooth'});}
 $$('[data-branch]').forEach(b=>b.addEventListener('click',()=>chooseBranch(b.dataset.branch)));$('#branchMobile').addEventListener('change',e=>chooseBranch(e.target.value));
 $$('[data-action=compare]').forEach(b=>b.addEventListener('click',()=>setMode('compare')));
-$$('[data-action=ambiguous]').forEach(b=>b.addEventListener('click',()=>openRows('Сложные и неоднозначные изменения',`Неоднозначных: ${fmt(analysis.ambiguous)} · правила: ${fmt(analysis.ruleAffected)} · фильтр: ${fmt(analysis.filterChanged)}`,[...analysis.ambiguousRows,...analysis.ruleRows])));
-$$('[data-action=flows]').forEach(b=>b.addEventListener('click',()=>{setMode('compare');if(filteredFlows.length)openFlowDetails(filteredFlows[flowIndex]);else openRows('Неоднозначные случаи',`Неоднозначных: ${fmt(analysis.ambiguous)}, изменения правил: ${fmt(analysis.ruleAffected)}`,[...analysis.ambiguousRows,...analysis.ruleRows])}));
 $('#zoomIn').addEventListener('click',()=>{pauseForManualNavigation();zoomAt(scale*1.15)});$('#zoomOut').addEventListener('click',()=>{pauseForManualNavigation();zoomAt(scale/1.15)});$('#zoomFit').addEventListener('click',()=>{pauseForManualNavigation();fitZoom()});$('#zoomAll').addEventListener('click',()=>{pauseForManualNavigation();fitAll()});$('#zoomReset').addEventListener('click',()=>{pauseForManualNavigation();zoomAt(1)});bindCanvasNavigation();$('#search').addEventListener('input',highlight);$('#search').addEventListener('keydown',e=>{if(e.key==='Enter'){const q=e.target.value.trim().toLowerCase();if(!q)return;const n=nodes.find(n=>(n.id+' '+n.t).toLowerCase().includes(q));if(n){pauseForManualNavigation();const p=viewPositions[n.id];if(p)board.scrollTo({left:Math.max(0,p.x*scale-board.clientWidth/2),top:Math.max(0,p.y*scale-board.clientHeight/2),behavior:'smooth'});chooseNode(n.id,false)}}});
 // Filters are committed together in the filter dialog.
-$('#playBtn').addEventListener('click',()=>{playing=!playing;showFlow()});$('#liveLinksBtn').addEventListener('click',()=>{liveLinks=!liveLinks;highlight()});$('#motionSpeed').addEventListener('change',e=>{motionSpeed=Math.max(.7,Math.min(2,Number(e.target.value)||1));showFlow()});$('#replayRoute').addEventListener('click',()=>{playing=true;showFlow();focusRoute(filteredFlows[flowIndex])});$('#routesBtn').addEventListener('click',openRoutes);$('#inspectToggle').addEventListener('click',()=>$('#inspector').classList.toggle('open'));
-$('#prevBtn').addEventListener('click',()=>selectFlow(flowIndex-1));$('#nextBtn').addEventListener('click',()=>selectFlow(flowIndex+1));$('#flowSlider').addEventListener('input',e=>selectFlow(Number(e.target.value),false));
-$('#detailBtn').addEventListener('click',()=>{const f=filteredFlows[flowIndex];if(f)openFlowDetails(f);else openRows('Неоднозначные изменения',`Неоднозначных: ${fmt(analysis.ambiguous)}`,analysis.ambiguousRows)});$('#exportBtn').addEventListener('click',exportAll);$('#detailsCsv').addEventListener('click',()=>downloadRows((window.__downloadRows||(()=>[]))(),'NEON_FLOW_детали.csv'));$('#closeInspector').addEventListener('click',()=>$('#inspector').classList.remove('open'));
+$('#playBtn').addEventListener('click',()=>{playing=!playing;showFlow()});$('#liveLinksBtn').addEventListener('click',()=>{liveLinks=!liveLinks;highlight()});$('#motionSpeed').addEventListener('change',e=>{motionSpeed=Math.max(.7,Math.min(2,Number(e.target.value)||1));showFlow()});$('#focusFlows').addEventListener('click',()=>{focusOnly=!focusOnly;activeRouteKey=null;showFlow()});$('#routesBtn').addEventListener('click',openRoutes);$('#inspectToggle').addEventListener('click',()=>$('#inspector').classList.toggle('open'));
+$('#routeSearch').addEventListener('input',renderRouteList);
+$('#detailBtn').addEventListener('click',()=>{const f=filteredFlows.find(x=>x.key===activeRouteKey);if(f)openFlowDetails(f)});$('#exportBtn').addEventListener('click',exportAll);$('#detailsCsv').addEventListener('click',()=>downloadRows((window.__downloadRows||(()=>[]))(),'NEON_FLOW_детали.csv'));$('#closeInspector').addEventListener('click',()=>$('#inspector').classList.remove('open'));
 $('#loadBtn').addEventListener('click',()=>{$('#dataDialog').close();$('#uploadDialog').showModal()});$('#choosePrior').addEventListener('click',()=>$('#priorFile').click());$('#chooseCurrent').addEventListener('click',()=>$('#currentFile').click());$('#priorFile').addEventListener('change',e=>{if(e.target.files[0])loadChoice(e.target.files[0],'old')});$('#currentFile').addEventListener('change',e=>{if(e.target.files[0])loadChoice(e.target.files[0],'new')});$('#applyFiles').addEventListener('click',applyImports);$('#demoBtn').addEventListener('click',()=>{$('#dataDialog').close();turnDemo()});
 $$('[data-close]').forEach(b=>b.addEventListener('click',()=>$('#'+b.dataset.close).close()));
-window.addEventListener('keydown',e=>{if(e.key==='Escape')$('#inspector').classList.remove('open');if(e.target.closest('input,select,textarea,dialog,button'))return;if(display==='compare'&&!e.shiftKey&&e.key==='ArrowRight'){selectFlow(flowIndex+1);return}if(display==='compare'&&!e.shiftKey&&e.key==='ArrowLeft'){selectFlow(flowIndex-1);return}const steps={ArrowLeft:[-160,0],ArrowRight:[160,0],ArrowUp:[0,-160],ArrowDown:[0,160]};if(steps[e.key]){e.preventDefault();pauseForManualNavigation();board.scrollLeft+=steps[e.key][0];board.scrollTop+=steps[e.key][1]}});
-let playInterval=window.setInterval(()=>{if(!playing||motionReduced()||draggingView||document.hidden||!analysis||!filteredFlows.length)return;if(display==='compare'&&!document.querySelector('dialog[open]')&&performance.now()-routeStarted>=5500/motionSpeed)selectFlow(flowIndex+1,true)},250);
+window.addEventListener('keydown',e=>{if(e.key==='Escape')$('#inspector').classList.remove('open');if(e.target.closest('input,select,textarea,dialog,button'))return;const steps={ArrowLeft:[-160,0],ArrowRight:[160,0],ArrowUp:[0,-160],ArrowDown:[0,160]};if(steps[e.key]){e.preventDefault();pauseForManualNavigation();board.scrollLeft+=steps[e.key][0];board.scrollTop+=steps[e.key][1]}});
+// No timed route changes or camera jumps. Animation is continuous on the map.
 window.addEventListener('resize',()=>{if(board.clientWidth&&board.clientHeight)setScale(scale)});if(typeof ResizeObserver!=='undefined'){const boardResize=new ResizeObserver(()=>{if(board.clientWidth&&board.clientHeight)setScale(scale)});boardResize.observe(board)}
 
 let rawActive=false,rawAbort=null,rawCancelled=false;
@@ -529,7 +595,7 @@ async function report(){
  for(const n of nodes){const a=previousStats[n.id]||{},b=currentStats[n.id]||{};summary.push([n.id,n.t,singleMode||a.noRule?'':a.count||0,b.noRule?'Нет правил':b.count||0,singleMode||a.noRule||b.noRule?'':(b.count||0)-(a.count||0),singleMode?'':a.known?a.sum:'',b.known?b.sum:'',b.known||0])}
  const meta=[['Параметр','Значение'],['Текущий',current.file],['Предыдущий',singleMode?'—':previous.file],['Демо',current.demo?'Да':'Нет'],['Фильтр долга',Number($('#minAmt').value)||0],['Дата смерти',$('#deathFilter').value],['Цессии',[...cessionSelected].join('; ')],['Дубли исключены из сравнения',analysis.skipped],['Предупреждения',rawWarnings||'—']];
  const sheets=[{name:'Блоки',rows:summary},{name:'Параметры',rows:meta}];
- if(!singleMode){const changes=[['ID договора','Откуда','Куда','Категория']];for(const f of analysis.flows)for(const id of f.ids)changes.push([id,f.from,f.to,'Однозначная смена блока']);for(const list of [analysis.ambiguousRows,analysis.ruleRows,analysis.addedRows,analysis.goneRows])for(const r of list)changes.push([r.id,r.from,r.to,r.kind]);sheets.push({name:'Изменения',rows:changes})}
+ if(!singleMode){const changes=[['ID договора','Откуда','Куда','Категория']];for(const r of allChangeRows())changes.push([r.id,r.from,r.to,r.kind]);sheets.push({name:'Изменения',rows:changes})}
  await W.exportXlsx(sheets,'NEON_FLOW_отчёт.xlsx');setStatus('Отчёт Excel сформирован');
  }catch(e){setStatus('Ошибка отчёта: '+e.message)}finally{button.disabled=false}
 }
@@ -559,8 +625,8 @@ $('#settingsBtn').addEventListener('click',()=>$('#settingsDialog').showModal())
 $('#collapseBtn').addEventListener('click',()=>{collapsed=!collapsed;$('#collapseBtn').setAttribute('aria-pressed',String(collapsed));$('#collapseBtn').classList.toggle('on',collapsed);highlight()});
 $('#branchMobile').addEventListener('change',()=>{$('#collapseBtn').disabled=branch==='all';if(branch==='all'){collapsed=false;$('#collapseBtn').classList.remove('on');$('#collapseBtn').setAttribute('aria-pressed','false');highlight()}});
 $('#fullBtn').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen()}catch{document.body.classList.toggle('fullscreen-fallback')}});
-$('#presentBtn').addEventListener('click',()=>{presentation=!presentation;document.body.classList.toggle('presentation',presentation);$('#presentBtn').textContent=presentation?'Выйти из показа':'Показ';if(presentation){playing=true;showFlow();focusRoute(filteredFlows[flowIndex])}});
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&presentation){presentation=false;document.body.classList.remove('presentation');$('#presentBtn').textContent='Показ'}});
+$('#presentBtn').addEventListener('click',()=>{presentation=!presentation;document.body.classList.toggle('presentation',presentation);$('#presentBtn').textContent=presentation?'Вернуть панели':'На весь экран';if(presentation){$('#inspector').classList.remove('open');requestAnimationFrame(fitAll)}});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&presentation){presentation=false;document.body.classList.remove('presentation');$('#presentBtn').textContent='На весь экран'}});
 $('#minimap').addEventListener('click',e=>{pauseForManualNavigation();const svg=$('#minimap'),r=svg.getBoundingClientRect(),sz=worldSize,ratio=Math.min(r.width/sz.w,r.height/sz.h);if(!ratio)return;const x=(e.clientX-r.left-(r.width-sz.w*ratio)/2)/ratio,y=(e.clientY-r.top-(r.height-sz.h*ratio)/2)/ratio;board.scrollLeft=x*scale-board.clientWidth/2;board.scrollTop=y*scale-board.clientHeight/2});
 board.addEventListener('scroll',()=>{updateMinimapViewport();saveViewSoon()});
 $('#historyBtn').addEventListener('click',openHistory);$('#historyOpen').addEventListener('click',async()=>{try{const after=await W.get($('#historyAfter').value),before=$('#historyBefore').value?await W.get($('#historyBefore').value):null;if(!after)throw Error('Выберите текущий снимок');acceptSnapshots(after.snapshot,before&&before.id!==after.id?before.snapshot:null,'Локальная история');$('#historyDialog').close()}catch(e){$('#historyStatus').textContent=e.message}});
