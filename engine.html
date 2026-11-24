@@ -3297,7 +3297,7 @@ window.addEventListener("message",async e=>{
     reportBridge("Формирую рассчитанные блоки и снимок…");
     await tick();
     const s=buildShared();
-    s.nodesMeta=N.map(n=>({id:n.id,p:n.p||null,t:n.t,x:n.x,y:n.y,w:n.w,k:n.k,rule:(cfg[n.id]?.c||[]).map(r=>r.t).filter(Boolean).join(" · "),q:!!cfg[n.id]?.q?.length,parents:parentsOf(n.id),extra:cfg[n.id]?.links||[],returns:cfg[n.id]?.rets||[]}));
+    s.nodesMeta=N.map(n=>({id:n.id,p:n.p||null,t:n.t,x:n.x,y:n.y,w:n.w,k:n.k,rule:(cfg[n.id]?.c||[]).map(r=>r.t).filter(Boolean).join(" · "),q:!!cfg[n.id]?.q?.length,parents:parentsOf(n.id),extra:linksOf(n.id),returns:retsOf(n.id)}));
     s.rulesName=m.rules.name;
     s.warning=[...(result.warns||[]),...((result.missing||[]).length?["Блоки без строк в таблице (остались прежними): "+result.missing.join(", ")]:[])].join(" · ");
     send("neon-raw-result",{snapshot:s});
