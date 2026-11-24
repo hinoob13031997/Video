@@ -10,7 +10,7 @@ function rpc(action,config,extra={}){
   function receive(e){if(e.source!==frame.contentWindow||e.origin!==location.origin||e.data?.request!==request)return;if(e.data.type==='neon-rules-result')finish(null,e.data);if(e.data.type==='neon-rules-error')finish(Error(e.data.message))}
   window.addEventListener('message',receive);frame.onload=()=>frame.contentWindow.postMessage({type:'neon-rules',request,action,config,...extra},location.origin);frame.onerror=()=>finish(Error('Не удалось открыть локальный движок.'));
   timer=setTimeout(()=>finish(Error('Движок не ответил. Проверьте доступ к библиотеке Excel.')),90000);
-  frame.src='engine.html?v=4.4-rules';document.body.appendChild(frame);
+  frame.src='engine.html?v=4.9-analysis';document.body.appendChild(frame);
  });
 }
 function create(options){
@@ -95,17 +95,18 @@ function create(options){
   history.slice().reverse().forEach((h,index)=>{const row=el('div','rule-history-row');row.appendChild(el('span','',new Date(h.at).toLocaleString('ru-RU')+' · '+h.label));const b=el('button','btn','Восстановить');b.disabled=busy;b.addEventListener('click',()=>restoreHistory(history.length-1-index));row.appendChild(b);box.appendChild(row)})
  }
  async function restoreHistory(index){if(busy||!abandon()||!history[index])return;const h=history[index];await task(async()=>{const r=await rpc('read',h.config);if(state)remember('До восстановления: '+h.label);state=r.state;legacy=false;adding=false;dirty=false;selected=state.nodes.some(n=>n.id===selected)?selected:state.nodes[0].id;source='Восстановленная версия правил';$('ruleSource').textContent=source;saveLocal();setWarnings(r.warnings);paint();historyView();status('Версия восстановлена. Пересчёт ещё не выполнен.','ok')})}
- async function open(id){
+ function prefillLink(from){const input=$('ruleLinks');if(!input||!state.nodes.some(n=>n.id===from))return;input.value=[...new Set([...codes(input.value),from])].join('; ');dirty=true;status('Добавлена визуальная стрелка от '+from+'. Чтобы изменить расчёт, настройте родителей. Сохраните правку.');}
+ async function open(id,from){
   if(busy)return;
   const ctx=options.context(),key=ctx.key;contextColumns=ctx.columns||[];
   if(!dialog.open)dialog.showModal();
-  if(state&&contextKey===key&&!legacy){if(!abandon())return;selected=state.nodes.some(n=>n.id===id)?id:selected;adding=false;dirty=false;paint();setBusy(false);return}
+  if(state&&contextKey===key&&!legacy){if(!abandon())return;selected=state.nodes.some(n=>n.id===id)?id:selected;adding=false;dirty=false;paint();setBusy(false);if(from)prefillLink(from);return}
   state=null;contextKey=key;selected=id;adding=false;dirty=false;legacy=ctx.legacy;form.replaceChildren();$('ruleNodes').replaceChildren();$('ruleHistoryBox').hidden=true;setWarnings([]);
   if(legacy){$('ruleSource').textContent='Снимок без полной конфигурации';status('В этом снимке нет полной таблицы правил. Импортируйте исходный Excel с правилами, чтобы не редактировать неверную версию.');setBusy(false);return}
   status('Читаю правила из локального движка…');await task(async()=>{
    let config=ctx.config;source=ctx.name||'Исходная структура';
    try{const draft=JSON.parse(localStorage.getItem(STORAGE)||'null');if(draft?.key===key&&draft.config){config=draft.config;source=draft.source||'Локальный черновик'}}catch{}
-   const r=await rpc('read',config);state=r.state;selected=state.nodes.some(n=>n.id===id)?id:state.nodes[0].id;$('ruleSource').textContent=source;setWarnings(r.warnings);paint();status('Выберите блок. Изменения не публикуются и не влияют на цифры до пересчёта.')
+   const r=await rpc('read',config);state=r.state;selected=state.nodes.some(n=>n.id===id)?id:state.nodes[0].id;$('ruleSource').textContent=source;setWarnings(r.warnings);paint();status('Выберите блок. Изменения не публикуются и не влияют на цифры до пересчёта.');if(from)prefillLink(from)
   })
  }
  form.addEventListener('input',()=>{dirty=true});form.addEventListener('change',()=>{dirty=true});
