@@ -1,4 +1,4 @@
-name: Publish Moonvit website
+name: Publish NEON FLOW v2
 
 on:
   push:
@@ -21,20 +21,19 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Check out website
+      - name: Check out site
         uses: actions/checkout@v4
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Prepare static website
+      - name: Prepare site
         run: |
           mkdir -p _site
-          cp index.html cinematic.css cinematic.js flight.js scenes.html video.html scenes.css scenes.js style.css app.js _site/
-          cp -R assets _site/assets
+          cp index.html styles.css app.js jszip.min.js _site/
           touch _site/.nojekyll
-      - name: Upload website
+      - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
-      - name: Deploy website
+      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
