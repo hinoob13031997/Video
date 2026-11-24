@@ -106,3 +106,25 @@ input::placeholder{color:#a5afbd}.zoom-label{font-size:12px;color:#b6c4d5;min-wi
 .node.connection-in:not(.flight):not(.selected){border-color:#91bbef;background:#273442;box-shadow:0 0 0 1px #91bbef35}.node.connection-out:not(.flight):not(.selected){border-color:#e3b980;background:#35312b;box-shadow:0 0 0 1px #e3b98035}.node.connection-focus:not(.flight){border-color:#c2d2e4;box-shadow:0 0 0 1px #c2d2e455}.node.flight{border-color:#a2e4cc;background:#253a32;box-shadow:0 0 0 1px #a2e4cc66,0 7px 22px #0004}
 .movement-track{stroke:#a2e4cc;stroke-width:4;opacity:1}.movement-edge{stroke:#d6ffeb;stroke-width:4.5;stroke-dasharray:22 130;animation-duration:2.8s}.movement-glow{stroke:#a2e4cc;stroke-width:12;opacity:.18}.flowbadge{z-index:15;background:#233e34;color:#e1ffef;border-color:#90cbb3}.node.route-source::after{content:"Источник"}.node.route-target::after{content:"Получатель"}
 @media(max-width:850px){.board-tools{gap:9px;padding:6px 10px;font-size:10px}.pan-hint{display:none}.edge-key i{width:15px}}
+
+/* V3.2 Motion: a deliberate pulse travels along the actual edge and reaches its target. */
+.board-tools .live-toggle{font-size:11px;padding:5px 9px;line-height:1.2}
+.motion-hint{font-size:11px;color:#b9c4d2;flex:0 1 auto}
+.structure-motion,.cinematic-route{pointer-events:none}
+.signal-trail{fill:none;stroke:var(--ec);stroke-width:3.5;stroke-linecap:round;stroke-dasharray:9 91;stroke-dashoffset:100;animation:signal-travel var(--speed,3.6s) linear infinite;animation-delay:var(--delay,0s);filter:drop-shadow(0 0 3px var(--ec));opacity:.85}
+.signal-trail.real-trail{stroke:#d2fce9;stroke-width:6;stroke-dasharray:15 85;opacity:1;filter:drop-shadow(0 0 4px #9de1c5)}
+.signal-packet{filter:drop-shadow(0 0 4px #b9edda);pointer-events:none}
+@keyframes signal-travel{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+.node.motion-source{animation:source-release var(--cycle,3.6s) ease-in-out infinite}
+.node.motion-target{animation:target-arrival var(--cycle,3.6s) ease-in-out infinite}
+@keyframes source-release{0%,100%{box-shadow:0 0 0 1px #a2e4cc66,0 7px 22px #0004}13%{box-shadow:0 0 0 2px #c1f5dfbb,0 0 22px #a2e4cc55}35%{box-shadow:0 0 0 1px #a2e4cc66,0 7px 22px #0004}}
+@keyframes target-arrival{0%,65%,100%{box-shadow:0 0 0 1px #a2e4cc66,0 7px 22px #0004}85%,93%{box-shadow:0 0 0 2px #c1f5dfcc,0 0 24px #a2e4cc55}}
+.speed-label{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#c4cedb}.speed-label select{font-size:12px;padding:7px 9px}
+.route-story{width:100%;display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,.7fr) minmax(0,1fr);gap:12px;align-items:stretch;padding-top:9px;border-top:1px solid #353e49}
+.story-end,.story-transfer{display:flex;flex-direction:column;justify-content:center;gap:3px;padding:9px 12px;background:#252d34;border:1px solid #46535d;border-radius:9px;min-width:0}
+.story-end small,.story-transfer small{font-size:11px;color:#b7c7d2}.story-end strong{font-size:13px;color:#eff5f8;font-weight:650;line-height:1.3;overflow-wrap:anywhere}
+.story-end span{font-size:11px;color:#b9c8d5}.story-transfer{text-align:center;background:#243830;border-color:#58786a;align-items:center}
+.story-transfer strong{font-size:17px;color:#dbf5e7;font-variant-numeric:tabular-nums}.story-progress{height:3px;background:#445e54;border-radius:4px;overflow:hidden;width:100%;max-width:170px}
+.story-progress i{display:block;width:100%;height:100%;background:#a2e4cc;transform:scaleX(0);transform-origin:left}.route-story.running .story-progress i{animation:story-progress var(--cycle,3.6s) linear infinite}.route-story.running .story-from{animation:story-source var(--cycle,3.6s) ease-in-out infinite}.route-story.running .story-to{animation:story-target var(--cycle,3.6s) ease-in-out infinite}
+@keyframes story-progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}@keyframes story-source{0%,100%{border-color:#46535d}12%{border-color:#b2e6cf;background:#2e4138}34%{border-color:#46535d}}@keyframes story-target{0%,65%,100%{border-color:#46535d}85%,95%{border-color:#b2e6cf;background:#2e4138}}
+@media(max-width:850px){.motion-hint{font-size:10px}.route-story{gap:5px;grid-template-columns:minmax(0,1fr) minmax(85px,.65fr) minmax(0,1fr);padding-top:6px}.story-end,.story-transfer{padding:6px}.story-end strong{font-size:11px}.story-end small,.story-end span,.story-transfer small{font-size:10px}.story-transfer strong{font-size:12px}}
