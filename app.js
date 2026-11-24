@@ -469,10 +469,10 @@ window.addEventListener('keydown',e=>{if(e.key==='Escape')$('#inspector').classL
 // No timed route changes or camera jumps. Animation is continuous on the map.
 window.addEventListener('resize',()=>{if(board.clientWidth&&board.clientHeight)setScale(scale)});if(typeof ResizeObserver!=='undefined'){const boardResize=new ResizeObserver(()=>{if(board.clientWidth&&board.clientHeight)setScale(scale)});boardResize.observe(board)}
 
-let rawActive=false,rawAbort=null,rawCancelled=false;
+let rawActive=false,rawAbort=null,rawCancelled=false,rawDraft=null,lastRaw=null;
 const rawDialog=$('#rawDialog'),rawRun=$('#rawRun'),rawInfo=$('#rawInfo');
-function refreshRaw(){rawRun.disabled=rawActive||!$('#rawRules').files[0]||!$('#rawCurrent').files[0];$('#rawCancel').hidden=!rawActive;$('#rawClose').disabled=rawActive}
-function calculateRaw(rules,registry){
+function refreshRaw(){const use=!!(rawDraft&&$('#rawUseDraft').checked);$('#rawDraftLabel').hidden=!rawDraft;$('#rawRules').disabled=rawActive||use;$('#rawUseDraft').disabled=rawActive;rawRun.disabled=rawActive||(!use&&!$('#rawRules').files[0])||!$('#rawCurrent').files[0];$('#rawCancel').hidden=!rawActive;$('#rawClose').disabled=rawActive}
+function calculateRaw(rules,registry,draft=null){
  return new Promise((resolve,reject)=>{
   const frame=document.createElement('iframe');frame.title='Изолированный локальный вычислитель';frame.setAttribute('aria-hidden','true');frame.tabIndex=-1;
   frame.style.cssText='position:fixed;left:-10000px;top:0;width:1200px;height:800px;visibility:hidden;pointer-events:none;';
@@ -489,30 +489,30 @@ function calculateRaw(rules,registry){
   }
   rawAbort=()=>fail('Расчёт отменён.');
   window.addEventListener('message',receive);
-  frame.onload=()=>{if(!ended)frame.contentWindow.postMessage({type:'neon-calculate-raw',request,rules,registry,reasons:$('#rawReasons').checked},location.origin)};
+  frame.onload=()=>{if(!ended)frame.contentWindow.postMessage({type:'neon-calculate-raw',request,rules,registry,rulesConfig:draft?.config||null,rulesName:draft?.name||'',reasons:$('#rawReasons').checked},location.origin)};
   frame.onerror=()=>fail('Не удалось загрузить локальный движок.');
   timeout=setTimeout(()=>fail('Превышено время расчёта. Проверьте файл и ресурсы браузера.'),20*60*1000);
-  frame.src='engine.html?v=4-workspace';document.body.appendChild(frame);
+  frame.src='engine.html?v=4.4-rules';document.body.appendChild(frame);
  });
 }
 $('#rawLoadBtn').addEventListener('click',()=>{$('#dataDialog').close();rawDialog.showModal();refreshRaw()});
-for(const id of ['rawRules','rawCurrent','rawPrevious'])$('#'+id).addEventListener('change',refreshRaw);
+for(const id of ['rawRules','rawCurrent','rawPrevious','rawUseDraft'])$('#'+id).addEventListener('change',refreshRaw);
 $('#rawClose').addEventListener('click',()=>{if(!rawActive)rawDialog.close()});
 rawDialog.addEventListener('cancel',e=>{if(rawActive)e.preventDefault()});
 $('#rawCancel').addEventListener('click',()=>{rawCancelled=true;rawAbort?.()});
 rawRun.addEventListener('click',async()=>{
  if(rawActive)return;
- const rules=$('#rawRules').files[0],cur=$('#rawCurrent').files[0],prev=$('#rawPrevious').files[0];
- if(!rules||!cur)return;
+ const rules=$('#rawRules').files[0],cur=$('#rawCurrent').files[0],prev=$('#rawPrevious').files[0],draft=rawDraft&&$('#rawUseDraft').checked?rawDraft:null;
+ if((!rules&&!draft)||!cur)return;
  rawActive=true;rawCancelled=false;refreshRaw();
  try{
   let a=null;
-  if(prev){rawInfo.textContent='Загружаю предыдущий реестр…';a=await calculateRaw(rules,prev)}
+  if(prev){rawInfo.textContent='Загружаю предыдущий реестр…';a=await calculateRaw(rules,prev,draft)}
   if(rawCancelled)throw Error('Расчёт отменён.');
   rawInfo.textContent='Загружаю текущий реестр…';
-  const b=await calculateRaw(rules,cur);
+  const b=await calculateRaw(rules,cur,draft);
   if(rawCancelled)throw Error('Расчёт отменён.');
-  acceptSnapshots(b,a,'Excel · '+rules.name);
+  acceptSnapshots(b,a,'Excel · '+(draft?.name||rules.name));lastRaw={ver:b.ver,cur,prev};
   rawDialog.close();
  }catch(e){rawInfo.textContent='Ошибка: '+e.message+' · Данные не изменены.'}
  finally{rawActive=false;refreshRaw()}
@@ -548,12 +548,12 @@ function subsetRows(indexes,code,kind){return indexes.map(i=>({id:current.ids[i]
 function attachBlockTools(n){
  const root=$('#inspectorBody'),section=document.createElement('div');section.className='sect block-tools';const stats=currentStats[n.id]||{count:0,sum:0,known:0};
  const p=byId[n.p],ps=p?currentStats[p.id]:null,share=ps?.count&&!stats.noRule?stats.count/ps.count*100:null,prev=previousStats[n.id],debtDelta=!singleMode&&stats.known&&prev?.known?stats.sum-prev.sum:null;
- section.innerHTML='<h3>Состав блока</h3><div class="info">Сумма долга + ГП: <b>'+ (stats.known?fmt(Math.round(stats.sum))+' ₽':'—')+'</b><br>Договоров с суммой: '+fmt(stats.known)+' из '+fmt(stats.count)+(debtDelta!==null?'<br>Изменение суммы: '+(debtDelta>0?'+':'')+fmt(Math.round(debtDelta))+' ₽':'')+(share!==null?'<br>Отношение к числу строк родителя: '+share.toLocaleString('ru-RU',{maximumFractionDigits:1})+'%':'')+'</div><button class="btn" data-members>Список договоров</button><button class="btn" data-export-block>Выгрузить Excel по блоку</button><button class="btn" data-distribution>Куда уходят должники</button><button class="btn" data-block-history>Динамика блока</button>';
+ section.innerHTML='<h3>Состав блока</h3><div class="info">Сумма долга + ГП: <b>'+ (stats.known?fmt(Math.round(stats.sum))+' ₽':'—')+'</b><br>Договоров с суммой: '+fmt(stats.known)+' из '+fmt(stats.count)+(debtDelta!==null?'<br>Изменение суммы: '+(debtDelta>0?'+':'')+fmt(Math.round(debtDelta))+' ₽':'')+(share!==null?'<br>Отношение к числу строк родителя: '+share.toLocaleString('ru-RU',{maximumFractionDigits:1})+'%':'')+'</div><button class="btn" data-members>Список договоров</button><button class="btn" data-export-block>Выгрузить Excel по блоку</button><button class="btn" data-distribution>Куда уходят должники</button><button class="btn" data-block-history>Динамика блока</button><button class="btn" data-edit-rules>Редактировать правила</button>';
  root.appendChild(section);
  section.querySelector('[data-members]').addEventListener('click',()=>openRows(n.t+' · договоры','Показано до 200 строк; экспорт CSV содержит весь список.',blockRowsFor(n.id)));
  section.querySelector('[data-export-block]').addEventListener('click',()=>rowExport(blockRowsFor(n.id),'Блок_'+n.id+'.xlsx'));
  section.querySelector('[data-distribution]').addEventListener('click',()=>showDistribution(n));
- section.querySelector('[data-block-history]').addEventListener('click',openHistory);
+ section.querySelector('[data-block-history]').addEventListener('click',openHistory);section.querySelector('[data-edit-rules]').addEventListener('click',()=>rulesEditor.open(n.id));
 }
 function showDistribution(n){
  let section=$('#distributionBox');if(section)section.remove();
@@ -619,7 +619,18 @@ function applyPrefs(){
 function openData(){updateDataSummary();$('#dataDialog').showModal()}
 $('#dataBtn').addEventListener('click',openData);$('#welcomeData').addEventListener('click',openData);$('#welcomeDemo').addEventListener('click',turnDemo);
 $$('[data-workspace=funnel]').forEach(b=>b.addEventListener('click',()=>setMode('vertical')));
-$('#rulesBtn').addEventListener('click',()=>$('#rulesDialog').showModal());$('#rulesImportBtn').addEventListener('click',()=>{$('#rulesDialog').close();rawDialog.showModal();refreshRaw()});
+const rulesEditor=window.FlowRules.create({
+ context:()=>({key:current?.empty||current?.demo?'baseline':String(current?.ver||current?.file||'snapshot'),config:current?.rulesConfig||null,columns:current?.rulesColumns||[],name:current?.rulesName||'',legacy:!!current&&!current.empty&&!current.demo&&!current.rulesConfig}),
+ apply:(config)=>{
+  rawDraft={config,name:'Локальные правила · '+new Date().toLocaleString('ru-RU')};
+  const matching=lastRaw&&lastRaw.ver===current?.ver&&$('#rawCurrent').files[0]===lastRaw.cur&&($('#rawPrevious').files[0]||undefined)===(lastRaw.prev||undefined);
+  if(!matching){$('#rawCurrent').value='';$('#rawPrevious').value=''}
+  $('#rawUseDraft').checked=true;rawDialog.showModal();refreshRaw();
+  rawInfo.textContent=matching?'Правки сохранены локально. Пересчёт двух реестров использует одинаковые правила.':'Правки сохранены. Выберите исходный реестр для пересчёта; прежние цифры пока не изменены.';
+  if(matching)rawRun.click();
+ }
+});
+$('#rulesBtn').addEventListener('click',()=>rulesEditor.open(selected));
 $('#filtersBtn').addEventListener('click',()=>{paintCessions();$('#filtersDialog').showModal()});$('#cessionSearch').addEventListener('input',paintCessions);$('#filtersApply').addEventListener('click',()=>{$('#filtersDialog').close();recompute();saveViewSoon()});$('#filtersReset').addEventListener('click',()=>{$('#minAmt').value='';$('#deathFilter').value='all';cessionSelected.clear();paintCessions();recompute();saveViewSoon()});
 $('#settingsBtn').addEventListener('click',()=>$('#settingsDialog').showModal());$('#themeSelect').addEventListener('change',e=>{prefs.theme=e.target.value;applyPrefs()});$('#codesToggle').addEventListener('change',e=>{prefs.codes=e.target.checked;applyPrefs()});$('#minimapToggle').addEventListener('change',e=>{prefs.minimap=e.target.checked;applyPrefs();drawMinimap()});$('#restoreViewToggle').addEventListener('change',e=>{prefs.restore=e.target.checked;if(!prefs.restore)prefs.view=null;applyPrefs()});$('#liveLinksBtn').addEventListener('click',()=>{prefs.live=liveLinks;W.savePrefs()});
 $('#collapseBtn').addEventListener('click',()=>{collapsed=!collapsed;$('#collapseBtn').setAttribute('aria-pressed',String(collapsed));$('#collapseBtn').classList.toggle('on',collapsed);highlight()});

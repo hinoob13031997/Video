@@ -1926,8 +1926,7 @@ function putRows(xml, rows, lastCol) {
   x = x.replace(/<autoFilter[^>]*\/>/, '<autoFilter ref="A1:' + lastCol + last + '"/>');
   return x;
 }
-async function downloadRules(){
- try{
+function makeRulesWorkbook(){
  if(typeof XLSX==="undefined")throw Error("Библиотека Excel не загружена.");
  const headers=["Код блока","Блок","Критерий (описание)","Колонка выгрузки","Условие","Значение","Сравнить с колонкой","Логика критериев (И / ИЛИ)","Брать из блока (код)","Вычесть блоки (коды через ;)","Родитель (код)","Тип блока","Доп. стрелки от блоков (коды через ;)","Пунктир (возврат) от блоков (коды через ;)","Цвет заливки"];
  const wb=XLSX.utils.book_new(),sheet=XLSX.utils.aoa_to_sheet([headers,...rulesRows()]);
@@ -1936,9 +1935,10 @@ async function downloadRules(){
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["Код","Блок","Родители","Путь","Тип"],...blockRows()]),"Блоки (справочник)");
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["Колонка"],...(FILEDATA()?DATA.cols:KNOWN_COLS).map(x=>[x])]),"Колонки");
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["Условие"],...OPS.map(x=>[OPCAP[x[0]]||x[1]])]),"Условия");
- const structure=JSON.stringify(cfg),parts=[];for(let i=0;i<structure.length;i+=24000)parts.push([structure.slice(i,i+24000)]);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["NEON_FLOW_V4_STRUCTURE"],...parts]),"Структура NEON");XLSX.writeFile(wb,"Таблица правил NEON FLOW.xlsx");setStatus("Таблица правил скачана",5000);
- }catch(err){setStatus("Ошибка выгрузки правил: "+err.message,8000)}
+ const structure=JSON.stringify(cfg),parts=[];for(let i=0;i<structure.length;i+=24000)parts.push([structure.slice(i,i+24000)]);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["NEON_FLOW_V4_STRUCTURE"],...parts]),"Структура NEON");return wb;
 }
+async function downloadRules(){try{XLSX.writeFile(makeRulesWorkbook(),"Таблица правил NEON FLOW.xlsx");setStatus("Таблица правил скачана",5000)}catch(err){setStatus("Ошибка выгрузки правил: "+err.message,8000)}}
+
 $("#dlRules").addEventListener("click", downloadRules);
 function refreshResetDel() { const b = $("#restoreDel"); if (!b) return; const k = (cfg.__del || []).length; b.hidden = !k || (REMOTE && !TOKEN); b.textContent = "Вернуть удалённые блоки (" + k + ")"; }
 $("#restoreDel").addEventListener("click", () => {
@@ -2033,7 +2033,7 @@ async function loadRulesFile(file) {
     const { blocks, warns, missing, made } = parseRulesTable(wb);
     Object.entries(blocks).forEach(([code, b]) => {
       const n = byId[code], d = cfg[code], nm = b.name && b.name !== n.t0 ? b.name : "";
-      cfg[code] = { c: b.rows, q: d.q, n: d.n, l: /или/i.test(b.logic) ? "or" : "", from: b.from, sub: b.sub, name: nm, txt: d.txt || null, uname: d.uname || "", pos: d.pos || null, links: b.links || d.links || [], rets: b.rets || (Array.isArray(d.rets) ? d.rets : null), ps: Array.isArray(d.ps) ? d.ps : [], color: b.color !== null ? b.color : (d.color || "") };
+      cfg[code] = { c: b.rows, q: d.q, n: d.n, l: /или/i.test(b.logic) ? "or" : "", from: b.from, sub: b.sub, name: nm, txt: d.txt || null, uname: d.uname || "", pos: d.pos || null, links: b.links || d.links || [], rets: b.rets || (Array.isArray(d.rets) ? d.rets : null), ps: Array.isArray(d.ps) ? d.ps : [], color: b.color !== null ? b.color : (d.color || ""), titleWeight: d.titleWeight || "" };
       n.t = cfg[code].uname || nm || n.t0;
     });
     cfg.__v = 2;
@@ -3251,22 +3251,79 @@ const bridgeBaseline = {"root":{"c":[],"q":["Сумма долга  больше
 REMOTE=false; DB=null; DL=null;
 updateAuthBtn(); paintSharedBtns();
 applySaved(bridgeBaseline); repaintAll();
-if(parent===window){document.title="NEON FLOW — локальный редактор правил";const b=document.createElement("div");b.style.cssText="padding:10px 18px;background:#25354a;color:#fff;font:14px system-ui";b.textContent="Локальный редактор. Изменения не публикуются. Скачайте таблицу правил, чтобы применить изменения в V4.";document.body.prepend(b);const saved=localOnlyStorage.getItem("funnel-cfg-v1");if(saved){try{applySaved(JSON.parse(saved));repaintAll()}catch{}}}
+if(parent===window){location.replace("index.html");}
 let bridgeBusy=false;
+/* Native V4 editor bridge. The legacy DOM remains internal; all requests originate on the same site. */
+function rulesState(){
+ return {config:JSON.parse(JSON.stringify(cfg)),nodes:N.map(n=>({id:n.id,t:n.t,k:n.k,p:n.p||"",parents:parentsOf(n.id),bases:basesOf(n.id),extra:linksOf(n.id),returns:retsOf(n.id),x:n.x,y:n.y,custom:!!n.custom,protected:NODEL.includes(n.id),data:JSON.parse(JSON.stringify(cfg[n.id]))})),columns:KNOWN_COLS,ops:OPS.map(([id,label])=>[id,OPCAP[id]||label]),kinds:KIND,colors:FILLS};
+}
+function dependencyIssues(){
+ const graph=Object.fromEntries(N.map(n=>[n.id,[...new Set([...basesOf(n.id),...(cfg[n.id]?.sub||[]).filter(x=>byId[x]&&(cfg[x]?.c?.some(r=>r.r)||cfg[x]?.sub?.length))])]]));
+ const issues=new Set();
+ for(const n of N){for(const x of fromBad(n.id))issues.add("Источник ниже блока: "+n.id+" → "+x);for(const x of [...splitCodes(cfg[n.id]?.from),...(cfg[n.id]?.sub||[])])if(!byId[x]||x===n.id)issues.add("Недействительная ссылка: "+n.id+" → "+x);}
+ const reach=(a,b,seen=new Set())=>{if(a===b)return true;if(seen.has(a))return false;seen.add(a);return (graph[a]||[]).some(x=>reach(x,b,seen))};
+ for(const [id,links] of Object.entries(graph))for(const x of links)if(reach(x,id))issues.add("Цикл расчёта: "+id+" → "+x);
+ return [...issues];
+}
+async function rulesBridge(m){
+ if(bridgeBusy)return;bridgeBusy=true;
+ const send=(type,obj)=>parent.postMessage({type,request:m.request,...obj},location.origin);
+ try{
+  applySaved(m.config||bridgeBaseline);const oldIssues=new Set(dependencyIssues());let warning=[];
+  if(m.action==="import"){
+   if(!(m.file instanceof File))throw Error("Выберите Excel с правилами.");
+   const result=await loadRulesFile(m.file);warning=[...(result.warns||[]),...((result.missing||[]).length?["Не было в таблице, оставлены прежними: "+result.missing.join(", ")]:[])];
+  }else if(m.action==="edit"||m.action==="add"){
+   const p=m.patch||{},id=String(p.id||"").trim(),name=String(p.name||"").trim(),add=m.action==="add";
+   if(!/^[A-Za-zА-Яа-яЁё0-9_-]{1,40}$/.test(id)||["__proto__","constructor","prototype"].includes(id))throw Error("Код: до 40 букв, цифр, дефисов или подчёркиваний.");
+   if(!name)throw Error("Укажите название блока.");
+   if(add?!!byId[id]:!byId[id])throw Error(add?"Код уже используется.":"Блок не найден.");
+   const codes=value=>[...new Set((Array.isArray(value)?value:splitCodes(value)).map(String).map(x=>x.trim()).filter(Boolean))];
+   const lists=Object.fromEntries(["parents","from","sub","links","rets"].map(k=>[k,codes(p[k])]));
+   for(const [key,arr] of Object.entries(lists))for(const x of arr)if(x===id||!Object.prototype.hasOwnProperty.call(byId,x))throw Error("Недействительная ссылка ("+key+"): "+x);
+   if(id!=="root"&&!lists.parents.length)throw Error("Выберите хотя бы одного родителя.");
+   if(add){const n=addNode({id,p:lists.parents[0],t:name,k:Object.prototype.hasOwnProperty.call(KIND,p.kind)&&p.kind!=="root"?p.kind:"stage",w:220});cfg[id]=defCfg(n);syncNodeList();}
+   const n=byId[id],c=cfg[id];
+   if(id!=="root"){const err=setParents(id,lists.parents);if(err)throw Error(err)}
+   const validOps=new Set(OPS.map(x=>x[0])),comparison=new Set(["eq","ne","lt","le","gt","ge"]);
+   const criteria=(p.criteria||[]).map((x,i)=>{
+    const t=String(x.t||"").trim(),r=x.r;if(!r)return {t,r:null};
+    const col=String(r.col||"").trim(),op=String(r.op||""),val=String(r.val??"").trim(),cmp=String(r.cmp||"").trim();
+    if(!col||!validOps.has(op))throw Error("Критерий "+(i+1)+": выберите колонку и условие.");
+    if(!["filled","empty"].includes(op)&&!val&&!cmp)throw Error("Критерий "+(i+1)+": отсутствует значение.");
+    if(cmp&&!comparison.has(op))throw Error("Критерий "+(i+1)+": сравнение с колонкой допустимо только для числового/текстового сравнения.");
+    if(["older","newer","emptynewer"].includes(op)&&(!Number.isFinite(Number(val.replace(",",".")))||Number(val.replace(",","."))<0))throw Error("Критерий "+(i+1)+": укажите число лет.");
+    if(["in","nin"].includes(op)&&!val.split(";").some(x=>x.trim()))throw Error("Критерий "+(i+1)+": заполните список через ;");
+    const rule={col,op,val,cmp};return {t:t||describeRule(rule),r:rule};
+   }).filter(x=>x.t||x.r);
+   if(id==="root"&&(criteria.some(x=>x.r)||lists.from.length||lists.sub.length))throw Error("Корневой блок исходного движка не выполняет критерии и исключения. Используйте дочерний блок.");
+   Object.assign(c,{c:criteria,l:p.logic==="or"?"or":"",from:lists.from.join("; "),sub:lists.sub,links:lists.links.filter(x=>!lists.parents.includes(x)),rets:lists.rets,uname:name===n.t0?"":name,name:"",q:String(p.questions||"").split("\n").map(x=>x.trim()).filter(Boolean),n:String(p.notes||""),color:fillKey(p.color)||""});
+   n.t=name;if(n.custom&&Object.prototype.hasOwnProperty.call(KIND,p.kind)&&p.kind!=="root")n.k=p.kind;
+   syncNodeList();relayout();
+  }else if(m.action==="delete"){
+   const result=deleteBlock(String(m.id));if(typeof result==="string")throw Error(result);warning=result.moved?.length?["Дочерние блоки перенесены к родителю: "+result.moved.join(", ")]:[];relayout();
+  }else if(!["read","export","validate"].includes(m.action))throw Error("Неизвестная команда редактора.");
+  const issues=dependencyIssues(),introduced=issues.filter(x=>!oldIssues.has(x));
+  if((m.action==="edit"||m.action==="add"||m.action==="delete"||m.action==="import")&&introduced.length)throw Error(introduced.join("; "));
+  if(m.action==="export"){if(typeof XLSX==="undefined")throw Error("Не загрузилась библиотека Excel.");send("neon-rules-result",{bytes:XLSX.write(makeRulesWorkbook(),{bookType:"xlsx",type:"array"})});return}
+  const state=rulesState();send("neon-rules-result",{state,warnings:[...warning,...issues]});
+ }catch(err){send("neon-rules-error",{message:err?.message||String(err)})}finally{bridgeBusy=false}
+}
 window.addEventListener("message",async e=>{
   if(e.source!==parent||e.origin!==location.origin||parent===window)return;
   const m=e.data;
+  if(m?.type==="neon-rules"){await rulesBridge(m);return;}
   if(!m||m.type!=="neon-calculate-raw"||bridgeBusy)return;
   bridgeBusy=true; bridgeRequest=m.request;
   const send=(type,obj)=>parent.postMessage({type,request:m.request,...obj},location.origin);
   try{
     if(typeof XLSX==="undefined")throw Error("Библиотека SheetJS не загрузилась. Проверьте доступ к cdnjs.cloudflare.com и повторите.");
-    if(!(m.rules instanceof File)||!(m.registry instanceof File))throw Error("Нужны таблица правил и реестр Excel.");
+    if((!(m.rules instanceof File)&&!m.rulesConfig)||!(m.registry instanceof File))throw Error("Нужны правила и реестр Excel.");
     DATA=null; RES=null; OWN={}; NORM=[]; STR=[];
     deadMode=""; minAmt=0; selectedCessions.clear();
     applySaved(bridgeBaseline);
     reportBridge("Читаю актуальную таблицу правил…");
-    const result=await loadRulesFile(m.rules);
+    const result=m.rulesConfig?(applySaved(m.rulesConfig),{warns:[],missing:[]}):await loadRulesFile(m.rules);
     if(!result)throw Error("Таблица правил не применена.");
     reportBridge("Читаю реестр "+m.registry.name+"…");
     await loadFile(m.registry);
@@ -3279,7 +3336,8 @@ window.addEventListener("message",async e=>{
     await tick();
     bridgeWithReasons=!!m.reasons; if(bridgeWithReasons)reportBridge("Формирую причины непопадания…"); const s=buildShared();
     s.nodesMeta=N.map(n=>({id:n.id,p:n.p||null,t:n.t,x:n.x,y:n.y,w:n.w,k:n.k,rule:(cfg[n.id]?.c||[]).map(r=>r.t).filter(Boolean).join(" · "),q:!!cfg[n.id]?.q?.length,parents:parentsOf(n.id),bases:basesOf(n.id),extra:linksOf(n.id),returns:retsOf(n.id),criteria:(cfg[n.id]?.c||[]).map(x=>({text:x.t,rule:x.r})),logic:cfg[n.id]?.l||"and",subtract:cfg[n.id]?.sub||[],from:cfg[n.id]?.from||""}));
-    s.rulesName=m.rules.name;
+    s.rulesName=m.rulesConfig?(m.rulesName||"Локальные правила"):m.rules.name;
+    s.rulesConfig=JSON.parse(JSON.stringify(cfg));s.rulesColumns=DATA.cols.slice();
     s.warning=[...(result.warns||[]),...((result.missing||[]).length?["Блоки без строк в таблице (остались прежними): "+result.missing.join(", ")]:[])].join(" · ");
     send("neon-raw-result",{snapshot:s});
   }catch(err){send("neon-raw-error",{message:err?.message||String(err)})}
