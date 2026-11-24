@@ -103,7 +103,7 @@ function emptySingleAnalysis(s){
  return {beforeCount,afterCount,blockAdded,blockRemoved,blockAddedIds,blockRemovedIds,flows:[],newTotal:0,goneTotal:0,unchanged:0,ambiguous:0,ruleAffected:0,cleanMoves:0,missing:0,filterChanged:0,skipped:s.duplicate.size,addedRows:[],goneRows:[],ambiguousRows:[],ruleRows:[],source:s.file};
 }
 function syncCompareControls(){
- for(const el of $('[data-mode="compare"],[data-action="compare"],[data-action="flows"],[data-action="ambiguous"],#playBtn,#prevBtn,#nextBtn,#flowSlider,#detailBtn,#exportBtn'))el.disabled=singleMode;
+ for(const el of $$('[data-mode="compare"],[data-action="compare"],[data-action="flows"],[data-action="ambiguous"],#playBtn,#prevBtn,#nextBtn,#flowSlider,#detailBtn,#exportBtn'))el.disabled=singleMode;
  const both=[current,previous].filter(Boolean);
  $('#minAmt').disabled=both.some(s=>!Array.isArray(s.amt));
  $('#deathFilter').disabled=both.some(s=>!Array.isArray(s.dd));
