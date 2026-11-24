@@ -412,8 +412,8 @@ dialog .dialog-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-conte
 </div>
 
 <script>
-const localOnlyStorage = (()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}})();
-let bridgeRequest=null;
+const localOnlyStorage = (()=>{const m=new Map(),editor=parent===window;return {getItem:k=>{if(editor){try{return window.localStorage.getItem("neon-editor-v4:"+k)}catch{}}return m.has(k)?m.get(k):null},setItem:(k,v)=>{m.set(k,String(v));if(editor){try{window.localStorage.setItem("neon-editor-v4:"+k,String(v))}catch{}}},removeItem:k=>{m.delete(k);if(editor){try{window.localStorage.removeItem("neon-editor-v4:"+k)}catch{}}}}})();
+let bridgeRequest=null,bridgeWithReasons=false;
 const reportBridge=message=>{if(bridgeRequest!==null&&parent!==window)parent.postMessage({type:"neon-raw-progress",request:bridgeRequest,message:String(message||"")},location.origin)};
 
 let W = 1120, H = 830, scale = 1, OX = 0, OY = 0, EW = 1120;
@@ -1926,39 +1926,18 @@ function putRows(xml, rows, lastCol) {
   x = x.replace(/<autoFilter[^>]*\/>/, '<autoFilter ref="A1:' + lastCol + last + '"/>');
   return x;
 }
-async function downloadRules() {
-  const btn = $("#dlRules"); btn.disabled = true;
-  try {
-    setStatus("Готовлю таблицу правил…");
-    let r = null;
-    try { r = await fetch("rules-template.xlsx?_=" + Date.now(), { cache: "no-store" }); } catch (e) { r = null; }
-    if (!r || !r.ok) r = await fetch("https://hinoob13031997.github.io/-/rules-template.xlsx?_=" + Date.now(), { cache: "no-store" });
-    if (!r.ok) throw new Error("не найден шаблон таблицы (rules-template.xlsx)");
-    const tpl = new File([await r.blob()], "t.xlsx");
-    const ents = await zipEntries(tpl);
-    const names = Object.keys(ents);
-    const wbx = utf8.decode(await entryBytes(tpl, ents["xl/workbook.xml"]));
-    const rels = {}; const rx = utf8.decode(await entryBytes(tpl, ents["xl/_rels/workbook.xml.rels"]));
-    for (const m of rx.matchAll(/<Relationship\b([^>]*?)\/?>/g)) { const id = (m[1].match(/\bId="([^"]*)"/) || [])[1], tg = (m[1].match(/\bTarget="([^"]*)"/) || [])[1]; if (id && tg) rels[id] = tg.startsWith("/") ? tg.slice(1) : "xl/" + tg.replace(/^\.\//, ""); }
-    const sheetPath = {}; let k = 0;
-    for (const m of wbx.matchAll(/<sheet\b([^>]*?)\/?>/g)) { k++; const nm = xmlDec((m[1].match(/\bname="([^"]*)"/) || [])[1] || ""), rid = (m[1].match(/\br:id="([^"]*)"/) || [])[1]; sheetPath[nm] = rels[rid] || "xl/worksheets/sheet" + k + ".xml"; }
-    const pr = sheetPath["Правила"], bl = sheetPath["Блоки (справочник)"], kl = sheetPath["Колонки"];
-    const colList = (FILEDATA() ? DATA.cols : KNOWN_COLS).map(c => [c]);
-    if (!pr) throw new Error("в шаблоне нет листа «Правила»");
-    const out = [];
-    for (const nm of names) {
-      let data = await entryBytes(tpl, ents[nm]);
-      if (nm === pr) data = enc.encode(putRows(utf8.decode(data), rulesRows(), "O"));
-      else if (nm === bl) data = enc.encode(putRows(utf8.decode(data), blockRows(), "E"));
-      else if (nm === kl) data = enc.encode(putRows(utf8.decode(data), colList, "A"));
-      else if (nm === "xl/workbook.xml") data = enc.encode(utf8.decode(data).replace(/('Колонки'!\$A\$2:\$A\$)\d+/, "$1" + (colList.length + 1)));
-      out.push({ name: nm, data });
-    }
-    const d = new Date(), two = x => String(x).padStart(2, "0");
-    await saveBlob(zipStore(out), "Таблица правил воронки " + two(d.getDate()) + "." + two(d.getMonth() + 1) + "." + d.getFullYear() + ".xlsx");
-    setStatus("Таблица правил скачана: блоков " + N.length, 5000);
-  } catch (e) { setStatus("Не удалось собрать таблицу правил: " + (e.message || e), 8000); }
-  finally { btn.disabled = false; }
+async function downloadRules(){
+ try{
+ if(typeof XLSX==="undefined")throw Error("Библиотека Excel не загружена.");
+ const headers=["Код блока","Блок","Критерий (описание)","Колонка выгрузки","Условие","Значение","Сравнить с колонкой","Логика критериев (И / ИЛИ)","Брать из блока (код)","Вычесть блоки (коды через ;)","Родитель (код)","Тип блока","Доп. стрелки от блоков (коды через ;)","Пунктир (возврат) от блоков (коды через ;)","Цвет заливки"];
+ const wb=XLSX.utils.book_new(),sheet=XLSX.utils.aoa_to_sheet([headers,...rulesRows()]);
+ sheet["!cols"]=headers.map((_,i)=>({wch:[13,45,45,38,24,24,32,20,25,28,28,20,30,30,20][i]}));
+ XLSX.utils.book_append_sheet(wb,sheet,"Правила");
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["Код","Блок","Родители","Путь","Тип"],...blockRows()]),"Блоки (справочник)");
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["Колонка"],...(FILEDATA()?DATA.cols:KNOWN_COLS).map(x=>[x])]),"Колонки");
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["Условие"],...OPS.map(x=>[OPCAP[x[0]]||x[1]])]),"Условия");
+ const structure=JSON.stringify(cfg),parts=[];for(let i=0;i<structure.length;i+=24000)parts.push([structure.slice(i,i+24000)]);XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([["NEON_FLOW_V4_STRUCTURE"],...parts]),"Структура NEON");XLSX.writeFile(wb,"Таблица правил NEON FLOW.xlsx");setStatus("Таблица правил скачана",5000);
+ }catch(err){setStatus("Ошибка выгрузки правил: "+err.message,8000)}
 }
 $("#dlRules").addEventListener("click", downloadRules);
 function refreshResetDel() { const b = $("#restoreDel"); if (!b) return; const k = (cfg.__del || []).length; b.hidden = !k || (REMOTE && !TOKEN); b.textContent = "Вернуть удалённые блоки (" + k + ")"; }
@@ -2050,6 +2029,7 @@ async function loadRulesFile(file) {
   const info = $("#rulesInfo");
   try {
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+    const structure=wb.Sheets["Структура NEON"];if(structure){const ar=XLSX.utils.sheet_to_json(structure,{header:1,raw:true,defval:""});if(ar[0]?.[0]==="NEON_FLOW_V4_STRUCTURE"){const saved=JSON.parse(ar.slice(1).map(r=>String(r[0]||"")).join(""));if(saved&&saved.__v>=2)applySaved(saved);else throw Error("Неверный формат структуры NEON");}}
     const { blocks, warns, missing, made } = parseRulesTable(wb);
     Object.entries(blocks).forEach(([code, b]) => {
       const n = byId[code], d = cfg[code], nm = b.name && b.name !== n.t0 ? b.name : "";
@@ -2453,7 +2433,7 @@ function buildShared() {
   });
   const ver = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const sig = Object.fromEntries(N.map(nd => [nd.id, ruleSig(nd.id)]));
-  const why = null; // Снимок только для локального сравнения; причины не нужны.
+  const why = bridgeWithReasons ? packWhy(res, own) : null;
   return { v: 1, ver, at: new Date().toISOString(), file: DATA.file, sheet: DATA.sheet || "", n, ids, amt, dd, labels: Object.fromEntries(N.map(node => [node.id, node.t])), cessions: DATA.cessions || undefined, own: owns, map, sets, sig, why };
 }
 function comparisonBaseline(snapshot) {
@@ -3271,6 +3251,7 @@ const bridgeBaseline = {"root":{"c":[],"q":["Сумма долга  больше
 REMOTE=false; DB=null; DL=null;
 updateAuthBtn(); paintSharedBtns();
 applySaved(bridgeBaseline); repaintAll();
+if(parent===window){document.title="NEON FLOW — локальный редактор правил";const b=document.createElement("div");b.style.cssText="padding:10px 18px;background:#25354a;color:#fff;font:14px system-ui";b.textContent="Локальный редактор. Изменения не публикуются. Скачайте таблицу правил, чтобы применить изменения в V4.";document.body.prepend(b);const saved=localOnlyStorage.getItem("funnel-cfg-v1");if(saved){try{applySaved(JSON.parse(saved));repaintAll()}catch{}}}
 let bridgeBusy=false;
 window.addEventListener("message",async e=>{
   if(e.source!==parent||e.origin!==location.origin||parent===window)return;
@@ -3296,8 +3277,8 @@ window.addEventListener("message",async e=>{
     if(!nRows())throw Error("Реестр пуст.");
     reportBridge("Формирую рассчитанные блоки и снимок…");
     await tick();
-    const s=buildShared();
-    s.nodesMeta=N.map(n=>({id:n.id,p:n.p||null,t:n.t,x:n.x,y:n.y,w:n.w,k:n.k,rule:(cfg[n.id]?.c||[]).map(r=>r.t).filter(Boolean).join(" · "),q:!!cfg[n.id]?.q?.length,parents:parentsOf(n.id),extra:linksOf(n.id),returns:retsOf(n.id)}));
+    bridgeWithReasons=!!m.reasons; if(bridgeWithReasons)reportBridge("Формирую причины непопадания…"); const s=buildShared();
+    s.nodesMeta=N.map(n=>({id:n.id,p:n.p||null,t:n.t,x:n.x,y:n.y,w:n.w,k:n.k,rule:(cfg[n.id]?.c||[]).map(r=>r.t).filter(Boolean).join(" · "),q:!!cfg[n.id]?.q?.length,parents:parentsOf(n.id),bases:basesOf(n.id),extra:linksOf(n.id),returns:retsOf(n.id),criteria:(cfg[n.id]?.c||[]).map(x=>({text:x.t,rule:x.r})),logic:cfg[n.id]?.l||"and",subtract:cfg[n.id]?.sub||[],from:cfg[n.id]?.from||""}));
     s.rulesName=m.rules.name;
     s.warning=[...(result.warns||[]),...((result.missing||[]).length?["Блоки без строк в таблице (остались прежними): "+result.missing.join(", ")]:[])].join(" · ");
     send("neon-raw-result",{snapshot:s});
