@@ -495,7 +495,7 @@ function calculateRaw(rules,registry,draft=null){
   frame.onload=()=>{if(!ended)frame.contentWindow.postMessage({type:'neon-calculate-raw',request,rules,registry,rulesConfig:draft?.config||null,rulesName:draft?.name||'',reasons:$('#rawReasons').checked},location.origin)};
   frame.onerror=()=>fail('Не удалось загрузить локальный движок.');
   timeout=setTimeout(()=>fail('Превышено время расчёта. Проверьте файл и ресурсы браузера.'),20*60*1000);
-  frame.src='engine.html?v=4.9-analysis';document.body.appendChild(frame);
+  frame.src='engine.html?v=4.10.1-fix';document.body.appendChild(frame);
  });
 }
 $('#rawLoadBtn').addEventListener('click',()=>{$('#dataDialog').close();rawDialog.showModal();refreshRaw()});

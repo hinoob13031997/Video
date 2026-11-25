@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Воронка умерших должников</title>
@@ -300,7 +300,7 @@ dialog .dialog-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-conte
 #comparison .table-scroll { overflow: auto; flex: 1; min-height: 0; margin: 8px 0 12px; isolation: isolate; }
 #comparison thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); box-shadow: 0 1px 0 var(--line); }
 </style>
-<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/xlsx.full.min.js?v=0.18.5-local"></script>
 
 </head>
 <body>
@@ -3317,7 +3317,7 @@ window.addEventListener("message",async e=>{
   bridgeBusy=true; bridgeRequest=m.request;
   const send=(type,obj)=>parent.postMessage({type,request:m.request,...obj},location.origin);
   try{
-    if(typeof XLSX==="undefined")throw Error("Библиотека SheetJS не загрузилась. Проверьте доступ к cdnjs.cloudflare.com и повторите.");
+    if(typeof XLSX==="undefined")throw Error("Локальная библиотека Excel не загрузилась. Обновите страницу через Ctrl+F5 и повторите расчёт.");
     if((!(m.rules instanceof File)&&!m.rulesConfig)||!(m.registry instanceof File))throw Error("Нужны правила и реестр Excel.");
     DATA=null; RES=null; OWN={}; NORM=[]; STR=[];
     deadMode=""; minAmt=0; selectedCessions.clear();

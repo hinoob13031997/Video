@@ -10,7 +10,7 @@ function rpc(action,config,extra={}){
   function receive(e){if(e.source!==frame.contentWindow||e.origin!==location.origin||e.data?.request!==request)return;if(e.data.type==='neon-rules-result')finish(null,e.data);if(e.data.type==='neon-rules-error')finish(Error(e.data.message))}
   window.addEventListener('message',receive);frame.onload=()=>frame.contentWindow.postMessage({type:'neon-rules',request,action,config,...extra},location.origin);frame.onerror=()=>finish(Error('Не удалось открыть локальный движок.'));
   timer=setTimeout(()=>finish(Error('Движок не ответил. Проверьте доступ к библиотеке Excel.')),90000);
-  frame.src='engine.html?v=4.9-analysis';document.body.appendChild(frame);
+  frame.src='engine.html?v=4.10.1-fix';document.body.appendChild(frame);
  });
 }
 function create(options){
