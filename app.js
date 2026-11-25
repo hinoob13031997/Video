@@ -194,9 +194,9 @@ function bezier(from,to,positions,compare=false){
 }
 function addDirectionMarkers(){
  const defs=document.createElementNS(svgNS,'defs');defs.setAttribute('class','direction-defs');
- for(const [id,color] of [['arrowBase','#8796aa'],['arrowIn','#91bbef'],['arrowOut','#e3b980']]){
+ for(const [id,color] of [['arrowBase','#a1afc1'],['arrowIn','#a7d6ff'],['arrowOut','#f5cb88']]){
   const m=document.createElementNS(svgNS,'marker');
-  for(const [k,v] of Object.entries({id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto',markerUnits:'userSpaceOnUse'}))m.setAttribute(k,v);
+  for(const [k,v] of Object.entries({id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'9',markerHeight:'9',orient:'auto',markerUnits:'userSpaceOnUse'}))m.setAttribute(k,v);
   const p=document.createElementNS(svgNS,'path');p.setAttribute('d','M0 0 L10 5 L0 10 Z');p.setAttribute('fill',color);m.appendChild(p);defs.appendChild(m);
  }
  svg.appendChild(defs);
@@ -285,23 +285,32 @@ function motionPacket(group,d,color,duration,offset,radius){
  return ()=>{if(typeof anim.beginElementAt==='function')anim.beginElementAt(-offset);else anim.setAttribute('begin','0s')};
 }
 function syncStructuralMotion(target){
- const allowed=liveLinks&&prefs.performance==='motion'&&display!=='compare'&&!motionReduced()&&!draggingView&&!viewEdit&&!current?.empty;
+ const compare=display==='compare',premium=prefs.performance==='motion';
+ const allowed=liveLinks&&!motionReduced()&&!draggingView&&!viewEdit&&!current?.empty&&(!compare||playing);
  $('#liveLinksBtn').hidden=false;$('#liveLinksBtn').classList.toggle('on',liveLinks);$('#liveLinksBtn').setAttribute('aria-pressed',String(liveLinks));
- $('#motionHint').textContent=display==='compare'?'Карта изменений между снимками · не текущие события':'Анимация связей по правилам, не перемещение договоров';
+ $('#motionHint').textContent=compare?'Зелёные — переходы по ID · голубые и янтарные — связи по правилам':'Световые импульсы показывают направление связей, не фактические переходы';
  if(!allowed){removeStructureMotion();return}
- const links=structuralLinks().filter(e=>(e.from===target||e.to===target)&&(!collapsed||branch==='all'||[e.from,e.to].every(id=>['root','dead'].includes(id)||branchOf(id)===branch))).slice(0,20);
- const key=display+'|'+target+'|'+motionSpeed+'|'+links.map(e=>e.from+'>'+e.to).join(',');
+ const edges=$$('.base-edge').filter(e=>!e.classList.contains('collapsed'));
+ const near=edges.filter(e=>e.classList.contains('near'));
+ const other=edges.filter(e=>!e.classList.contains('near')&&(branch==='all'||[e.dataset.a,e.dataset.b].every(id=>['root','dead'].includes(id)||branchOf(id)===branch)));
+ // Keep confirmed transitions visually dominant in comparison mode; animate only nearby structural links.
+ const limit=compare?(premium?16:8):(premium?64:24);
+ const chosen=(compare?near:[...near,...other]).slice(0,limit);
+ const signature=chosen.map(e=>[e.dataset.a,e.dataset.b,e.dataset.kind,e.classList.contains('edge-in')?'in':e.classList.contains('edge-out')?'out':'base'].join(':')).join(',');
+ const key=[display,target,motionSpeed,premium,branch,signature].join('|');
  if(structureMotionKey===key)return;
  removeStructureMotion();structureMotionKey=key;
- const g=document.createElementNS(svgNS,'g');g.setAttribute('class','structure-motion');const start=[];
- links.forEach((e,i)=>{
-  const d=bezier(e.from,e.to,viewPositions);if(!d)return;
-  const color=e.to===target?'#91bbef':'#e3b980';
-  const trail=pathEl(d,'signal-trail',color);trail.setAttribute('pathLength','100');trail.style.setProperty('--speed',(2.8/motionSpeed)+'s');trail.style.setProperty('--delay',(-i*.25)+'s');g.appendChild(trail);
-  start.push(motionPacket(g,d,color,2.8/motionSpeed,(i*.3)%(2.8/motionSpeed),3.2));
+ if(!chosen.length)return;
+ const g=document.createElementNS(svgNS,'g');g.setAttribute('class','structure-motion');
+ chosen.forEach((e,i)=>{
+  const d=e.getAttribute('d');if(!d)return;
+  const close=e.classList.contains('near'),color=e.classList.contains('edge-in')?'#a7d6ff':e.classList.contains('edge-out')?'#f5cb88':'#b7c5d6';
+  const trail=pathEl(d,'signal-trail'+(close?' signal-near':' signal-neutral'),color);
+  trail.setAttribute('pathLength','100');trail.style.setProperty('--speed',((close?3.0:4.6)/motionSpeed)+'s');trail.style.setProperty('--delay',(-i*.37)+'s');g.appendChild(trail);
  });
- svg.appendChild(g);start.forEach(fn=>fn());
+ const actual=svg.querySelector('.map-route');if(actual)svg.insertBefore(g,actual);else svg.appendChild(g);
 }
+
 function bindCanvasNavigation(){
  board.addEventListener('wheel',e=>{
   e.preventDefault();pauseForManualNavigation();const r=board.getBoundingClientRect();
@@ -367,23 +376,23 @@ function showFlow(){
  if(!active){highlight();renderInspector();return}
  const routes=displayedRoutes(),f=routes.find(x=>x.key===activeRouteKey);
  $('#flowCount').textContent=fmt(routes.length)+' маршрутов · '+fmt(routes.reduce((s,f)=>s+f.count,0))+' ID'+(flowMetric==='debt'?' · '+fmt(Math.round(routes.reduce((s,f)=>s+(f.afterDebt||0),0)))+' ₽ известных сумм':'');
- $('#flowTitle').textContent=routes.length?('Все линии остаются на схеме. Нажмите линию или число для деталей.'+(routes.length>(prefs.performance==='motion'?100:12)?' Импульсы на крупнейших и выбранном маршруте; все стрелки видны.':'')):'Нет однозначных маршрутов в текущем представлении. Проверьте отдельные категории.';
+ $('#flowTitle').textContent=routes.length?('Все линии остаются на схеме. Нажмите линию или число для деталей.'+(routes.length>(prefs.performance==='motion'?100:24)?' Импульсы на крупнейших и выбранном маршруте; все стрелки видны.':'')):'Нет однозначных маршрутов в текущем представлении. Проверьте отдельные категории.';
  $('#flowTitle').title='Сравнение двух снимков, не события в реальном времени.';if(flowMetric==='debt')$('#flowTitle').textContent+=' Сумма на текущую дату; * — известна не для всех ID.';
  renderCategories();
  const defs=document.createElementNS(svgNS,'defs');defs.setAttribute('class','route-defs');
- for(const [id,c] of [['routeArrow','#78cbb2'],['routeArrowSelected','#d9fff0']]){
+ for(const [id,c] of [['routeArrow','#95e5c9'],['routeArrowSelected','#e5fff5']]){
   const arrow=document.createElementNS(svgNS,'marker');for(const [k,v] of Object.entries({id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'10',markerHeight:'10',markerUnits:'userSpaceOnUse',orient:'auto'}))arrow.setAttribute(k,v);
   const p=document.createElementNS(svgNS,'path');p.setAttribute('d','M0 0 L10 5 L0 10 Z');p.setAttribute('fill',c);arrow.appendChild(p);defs.appendChild(arrow)
  }svg.appendChild(defs);
  const keys=new Set(routes.map(f=>f.key)),max=Math.max(1,...routes.map(routeValue)),placed=[];
  const ordered=[...routes].sort((a,b)=>Number(a.key===activeRouteKey)-Number(b.key===activeRouteKey)||a.count-b.count);
- const animate=playing&&!motionReduced();const animatedKeys=new Set(routes.slice(0,prefs.performance==='motion'?100:12).map(f=>f.key));const group=document.createElementNS(svgNS,'g');group.setAttribute('class','map-route');svg.appendChild(group);
+ const animate=playing&&!motionReduced();const animatedKeys=new Set(routes.slice(0,prefs.performance==='motion'?100:24).map(f=>f.key));const group=document.createElementNS(svgNS,'g');group.setAttribute('class','map-route');svg.appendChild(group);
  for(const route of ordered){
-  const d=routePath(route,keys.has(route.to+'|'+route.from));if(!d)continue;const chosen=route.key===activeRouteKey,width=2.5+5*Math.sqrt(routeValue(route)/max);
+  const d=routePath(route,keys.has(route.to+'|'+route.from));if(!d)continue;const chosen=route.key===activeRouteKey,width=3.1+4.8*Math.sqrt(routeValue(route)/max);
   const g=document.createElementNS(svgNS,'g');g.setAttribute('class','flow-route'+(chosen?' focused':''));
   g.dataset.key=route.key;g.dataset.from=route.from;g.dataset.to=route.to;
   const track=pathEl(d,'map-track');track.style.setProperty('--route-width',width+'px');track.setAttribute('marker-end','url(#'+(chosen?'routeArrowSelected':'routeArrow')+')');g.appendChild(track);
-  if(animate&&(animatedKeys.has(route.key)||chosen)){const pulse=pathEl(d,'map-pulse');pulse.setAttribute('pathLength','100');pulse.style.setProperty('--route-width',Math.max(2,width-1)+'px');pulse.style.setProperty('--speed',(3.5/motionSpeed)+'s');pulse.style.setProperty('--delay',(-((route.from.length*7+route.to.length*11)%13)/5)+'s');g.appendChild(pulse)}
+  if(animate&&(animatedKeys.has(route.key)||chosen)){const pulse=pathEl(d,'map-pulse');pulse.setAttribute('pathLength','100');pulse.style.setProperty('--route-width',Math.max(2.7,width-.6)+'px');pulse.style.setProperty('--speed',(3.1/motionSpeed)+'s');pulse.style.setProperty('--delay',(-((route.from.length*7+route.to.length*11)%13)/5)+'s');g.appendChild(pulse)}
   const hit=pathEl(d,'click-edge');hit.setAttribute('tabindex','0');hit.setAttribute('role','button');hit.setAttribute('aria-label',route.from+' → '+route.to+': '+route.count+' ID');const t=document.createElementNS(svgNS,'title');t.textContent=(byId[route.from]?.t||route.from)+' → '+(byId[route.to]?.t||route.to)+' · '+fmt(route.count);hit.appendChild(t);
   const select=()=>{activeRouteKey=route.key;flowIndex=filteredFlows.indexOf(route);if(!focusOnly)selected=route.to;showFlow();openFlowDetails(route)};
   hit.addEventListener('click',select);hit.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select()}});g.appendChild(hit);group.appendChild(g);
