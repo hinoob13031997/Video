@@ -112,3 +112,23 @@ body[data-mode=compare] .map-pulse{animation-name:compare-drift}
 body[data-mode=compare] #edges:has(.flow-route.focused) .flow-route:not(.focused){opacity:.25}
 body[data-mode=compare] #badgeLayer:has(.map-badge.focused) .map-badge:not(.focused){opacity:.38}
 body[data-mode=compare] #edges:has(.flow-route.focused) .flow-route:not(.focused):hover{opacity:1}
+
+/* V4.10.5 — quick, local draft creation without altering calculated memberships. */
+.new-block-dialog{width:min(470px,94vw)}
+.new-block-dialog .modal-body{display:grid;gap:13px}
+.new-block-dialog label{display:grid;gap:7px;font-weight:600;font-size:13px}
+.new-block-dialog input,.new-block-dialog select{width:100%}
+.new-block-dialog .new-block-help{margin:0;padding:12px;border:1px solid var(--outline);border-radius:9px;background:var(--elev);font-size:12px}
+.new-block-dialog #newBlockStatus{margin:0;min-height:0}
+.new-block-dialog .new-block-error{color:var(--red)}
+.new-block-actions{display:flex;justify-content:flex-end}
+.draft-count{color:var(--amber);border-color:var(--amber)}
+.node.draft-node{--c:var(--amber);border:1.5px dashed var(--amber);background:color-mix(in srgb,var(--amber) 8%,var(--card));box-shadow:none}
+.node.draft-node:hover{box-shadow:0 0 0 1px var(--amber);border-color:var(--amber)}
+.node.draft-node .draft-tag{position:absolute;right:12px;top:11px;font-size:10px;font-weight:700;letter-spacing:.7px;color:var(--amber)}
+.draft-node .node-name{margin-top:13px}
+.draft-node .node-bottom .mini{color:var(--amber)}
+.draft-node .count{color:var(--muted)}
+.layout-edit .node.draft-node.placement-card{outline:2px solid var(--amber);outline-offset:3px;cursor:move}
+.draft-edge{fill:none;stroke:var(--amber);stroke-width:2.5;stroke-dasharray:7 6;opacity:.9;pointer-events:none}
+.parent-picker{margin-top:5px;max-width:100%;font-size:12px}
