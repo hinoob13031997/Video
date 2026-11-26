@@ -17,12 +17,12 @@ function create(options){
  let state=null,contextKey='',selected='',adding=false,dirty=false,busy=false,legacy=false,history=[],warnings=[],source='',contextColumns=[];
  const dialog=$('rulesDialog'),form=$('ruleForm'),notice=$('ruleNotice');
  try{const h=JSON.parse(localStorage.getItem(HISTORY)||'[]');if(Array.isArray(h))history=h.filter(x=>x?.config).slice(-20)}catch{}
- const buttons=['ruleImport','ruleExport','ruleUndo','ruleHistory','ruleValidate','ruleApply','ruleAdd','ruleDelete','ruleDiscard','ruleSave'];
+ const buttons=['ruleImport','ruleExport','ruleUndo','ruleHistory','ruleValidate','ruleApply','ruleAdd','ruleDelete','ruleDiscard','ruleSave','rulePlace'];
  function status(text,kind=''){notice.textContent=text;notice.className='rule-notice'+(kind?' '+kind:'')}
  function setBusy(v){busy=v;for(const id of buttons)$(id).disabled=v||!state||legacy&&!['ruleImport','ruleHistory'].includes(id);$('ruleImport').disabled=v;$('ruleHistory').disabled=v;$('ruleClose').disabled=v;$('ruleSearch').disabled=v;form.inert=v;if(!v){$('ruleUndo').disabled=legacy||!history.length;$('ruleDelete').disabled=legacy||adding||!!node()?.protected||!node();$('ruleSave').disabled=legacy||!state;$('ruleDiscard').disabled=legacy||!state}}
  function node(){return state?.nodes.find(n=>n.id===selected)}
  function setWarnings(list){warnings=list||[];const box=$('ruleWarnings');box.textContent=warnings.length?'Замечания движка:\n'+warnings.join('\n'):'';box.hidden=!warnings.length}
- function saveLocal(){try{localStorage.setItem(STORAGE,JSON.stringify({key:contextKey,config:state.config,source}));localStorage.setItem(HISTORY,JSON.stringify(history));return true}catch{return false}}
+ function saveLocal(){let saved=true;try{localStorage.setItem(STORAGE,JSON.stringify({key:contextKey,config:state.config,source}));localStorage.setItem(HISTORY,JSON.stringify(history))}catch{saved=false}options.onDraft?.(contextKey,state.config);return saved}
  function remember(label){if(!state)return;history.push({at:new Date().toISOString(),label,config:copy(state.config),source});if(history.length>20)history.shift()}
  async function task(fn){if(busy)return false;setBusy(true);try{await fn();return true}catch(e){status('Ошибка: '+e.message,'error');return false}finally{setBusy(false)}}
  function abandon(){return !dirty||confirm('Несохранённый ввод будет потерян. Продолжить?')}
@@ -71,14 +71,14 @@ function create(options){
    ['Вычесть блоки','ruleSub',(d.sub||[]).join('; '),'Исключить договоры, входящие в эти блоки.'],
    ['Дополнительные стрелки от','ruleLinks',(d.links||[]).join('; '),'Только визуальная связь.'],
    ['Пунктир от','ruleReturns',(adding?[]:n.returns||[]).join('; '),'Возврат, только визуальная связь.']
-  ]){const f=field(g,label,id,value,help);f.disabled=root&&['ruleParents','ruleFrom','ruleSub'].includes(id)}
+  ]){const f=field(g,label,id,value,help);f.disabled=root&&['ruleParents','ruleFrom','ruleSub'].includes(id);if(id==='ruleParents'&&!root){const pick=el('select','parent-picker');pick.append(new Option('Выбрать одного родителя вместо списка…',''));for(const item of state.nodes){if(item.id!==n?.id)pick.append(new Option(item.t+' ['+item.id+']',item.id))}pick.addEventListener('change',()=>{if(pick.value){f.value=pick.value;pick.value='';dirty=true}});f.parentNode.appendChild(pick)}}
   const criteria=section('Критерии отбора',root?'Корень представляет весь входной реестр. Его критерии не выполняются исходным движком.':'Описание без условия не участвует в расчёте. Для списков используйте «;», для возраста даты — число лет.');
   field(criteria,'Объединение условий','ruleLogic',d.l==='or'?'or':'and','','text',[['and','И — все условия'],['or','ИЛИ — хотя бы одно']]);
   const list=el('div');list.id='ruleCriteria';criteria.appendChild(list);for(const x of d.c||[])criterion(x);
   const add=el('button','btn','+ Критерий');add.type='button';add.addEventListener('click',()=>{criterion();dirty=true});add.disabled=root;criteria.appendChild(add);
   const notes=section('Заметки и вопросы');field(notes,'Заметка','ruleNotes',d.n||'','','textarea');field(notes,'Вопросы / замечания','ruleQuestions',(d.q||[]).join('\n'),'Каждый вопрос с новой строки.','textarea');
  }
- function paint(){paintList();paintForm();$('ruleDelete').disabled=busy||legacy||adding||!!node()?.protected||!node();$('ruleUndo').disabled=busy||legacy||!history.length;form.inert=busy||legacy}
+ function paint(){paintList();paintForm();$('rulePlace').hidden=adding||!node()||!options.isDraft?.(selected);$('ruleDelete').disabled=busy||legacy||adding||!!node()?.protected||!node();$('ruleUndo').disabled=busy||legacy||!history.length;form.inert=busy||legacy}
  function patch(){return {id:$('ruleCode').value,name:$('ruleName').value,kind:$('ruleKind').value,color:$('ruleColor').value,parents:codes($('ruleParents').value),from:codes($('ruleFrom').value),sub:codes($('ruleSub').value),links:codes($('ruleLinks').value),rets:codes($('ruleReturns').value),logic:$('ruleLogic').value,notes:$('ruleNotes').value,questions:$('ruleQuestions').value,criteria:[...$('ruleCriteria').querySelectorAll('.rule-criterion')].map(b=>{const get=c=>b.querySelector('.crit-'+c),op=get('op').value,cmp=get('cmp'),val=get('val');return{t:get('desc').value,r:op?{col:get('col').value,op,val:val.disabled?'':val.value,cmp:cmp.disabled?'':cmp.value}:null}})}}
  async function savePatch(validate=false){
   if(!state||legacy)return false;
@@ -95,17 +95,36 @@ function create(options){
   history.slice().reverse().forEach((h,index)=>{const row=el('div','rule-history-row');row.appendChild(el('span','',new Date(h.at).toLocaleString('ru-RU')+' · '+h.label));const b=el('button','btn','Восстановить');b.disabled=busy;b.addEventListener('click',()=>restoreHistory(history.length-1-index));row.appendChild(b);box.appendChild(row)})
  }
  async function restoreHistory(index){if(busy||!abandon()||!history[index])return;const h=history[index];await task(async()=>{const r=await rpc('read',h.config);if(state)remember('До восстановления: '+h.label);state=r.state;legacy=false;adding=false;dirty=false;selected=state.nodes.some(n=>n.id===selected)?selected:state.nodes[0].id;source='Восстановленная версия правил';$('ruleSource').textContent=source;saveLocal();setWarnings(r.warnings);paint();historyView();status('Версия восстановлена. Пересчёт ещё не выполнен.','ok')})}
+ function storedDraft(key){try{const d=JSON.parse(localStorage.getItem(STORAGE)||'null');return d?.key===key&&d.config?d:null}catch{return null}}
+ function draftConfig(){const key=options.context().key;if(state&&contextKey===key&&!legacy)return state.config;return storedDraft(key)?.config||null}
+ async function quickParents(){
+  if(busy)throw Error('Дождитесь завершения операции.');
+  const ctx=options.context(),key=ctx.key;
+  if(state&&contextKey===key&&!legacy)return state.nodes.map(n=>({id:n.id,name:n.t}));
+  const draft=storedDraft(key);if(ctx.legacy&&!draft)throw Error('В снимке нет исходной таблицы правил. Сначала импортируйте её в разделе «Правила».');
+  busy=true;try{const r=await rpc('read',draft?.config||ctx.config);state=r.state;contextKey=key;contextColumns=ctx.columns||[];legacy=false;adding=false;dirty=false;source=draft?.source||ctx.name||'Исходная структура';setWarnings(r.warnings);selected=state.nodes.some(n=>n.id===selected)?selected:state.nodes[0]?.id;return state.nodes.map(n=>({id:n.id,name:n.t}))}finally{busy=false}
+ }
+ async function quickCreate(name,parent){
+  name=String(name||'').trim();if(!name)throw Error('Введите название блока.');
+  if(name.length>160)throw Error('Название — не более 160 символов.');
+  await quickParents();if(!state.nodes.some(n=>n.id===parent))throw Error('Выберите существующий родительский блок.');
+  if(busy)throw Error('Дождитесь завершения операции.');
+  let id;do{id='N_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}while(state.nodes.some(n=>n.id===id));
+  const patch={id,name,kind:'stage',parents:[parent],from:[],sub:[],links:[],rets:[],criteria:[],logic:'and',notes:'',questions:'',color:''};
+  busy=true;try{
+   const r=await rpc('add',state.config,{patch});remember('Добавлен '+id);state=r.state;selected=id;adding=false;dirty=false;source='Локальный черновик';$('ruleSource').textContent=source;setWarnings(r.warnings);const saved=saveLocal();return {id,saved};
+  }finally{busy=false}
+ }
  function prefillLink(from){const input=$('ruleLinks');if(!input||!state.nodes.some(n=>n.id===from))return;input.value=[...new Set([...codes(input.value),from])].join('; ');dirty=true;status('Добавлена визуальная стрелка от '+from+'. Чтобы изменить расчёт, настройте родителей. Сохраните правку.');}
  async function open(id,from){
   if(busy)return;
   const ctx=options.context(),key=ctx.key;contextColumns=ctx.columns||[];
   if(!dialog.open)dialog.showModal();
   if(state&&contextKey===key&&!legacy){if(!abandon())return;selected=state.nodes.some(n=>n.id===id)?id:selected;adding=false;dirty=false;paint();setBusy(false);if(from)prefillLink(from);return}
-  state=null;contextKey=key;selected=id;adding=false;dirty=false;legacy=ctx.legacy;form.replaceChildren();$('ruleNodes').replaceChildren();$('ruleHistoryBox').hidden=true;setWarnings([]);
+  const stored=storedDraft(key);state=null;contextKey=key;selected=id;adding=false;dirty=false;legacy=ctx.legacy&&!stored;form.replaceChildren();$('ruleNodes').replaceChildren();$('ruleHistoryBox').hidden=true;setWarnings([]);
   if(legacy){$('ruleSource').textContent='Снимок без полной конфигурации';status('В этом снимке нет полной таблицы правил. Импортируйте исходный Excel с правилами, чтобы не редактировать неверную версию.');setBusy(false);return}
   status('Читаю правила из локального движка…');await task(async()=>{
-   let config=ctx.config;source=ctx.name||'Исходная структура';
-   try{const draft=JSON.parse(localStorage.getItem(STORAGE)||'null');if(draft?.key===key&&draft.config){config=draft.config;source=draft.source||'Локальный черновик'}}catch{}
+   let config=stored?.config||ctx.config;source=stored?.source||ctx.name||'Исходная структура';
    const r=await rpc('read',config);state=r.state;selected=state.nodes.some(n=>n.id===id)?id:state.nodes[0].id;$('ruleSource').textContent=source;setWarnings(r.warnings);paint();status('Выберите блок. Изменения не публикуются и не влияют на цифры до пересчёта.');if(from)prefillLink(from)
   })
  }
@@ -113,18 +132,19 @@ function create(options){
  $('ruleSearch').addEventListener('input',paintList);
  $('ruleClose').addEventListener('click',()=>{if(!busy&&abandon()){dirty=false;dialog.close()}});
  dialog.addEventListener('cancel',e=>{if(busy||!abandon())e.preventDefault();else dirty=false});
- $('ruleAdd').addEventListener('click',()=>{if(!state||!abandon())return;adding=true;dirty=true;paint();$('ruleCode').focus();status('Создание нового блока')});
+ $('ruleAdd').addEventListener('click',()=>{if(!state||busy||!abandon())return;dirty=false;adding=false;dialog.close();options.requestAdd?.(selected)});
  $('ruleDiscard').addEventListener('click',()=>{adding=false;dirty=false;paint();status('Несохранённый ввод сброшен.')});
  $('ruleSave').addEventListener('click',()=>savePatch(false));
+ $('rulePlace').addEventListener('click',async()=>{if(!node()||!options.isDraft?.(selected)||!await savePatch(false))return;dialog.close();options.place?.(selected)});
  $('ruleValidate').addEventListener('click',()=>savePatch(true));
  $('ruleDelete').addEventListener('click',async()=>{if(!node()||node().protected||!abandon()||!confirm('Удалить блок '+selected+'? Его дочерние блоки будут перенесены к родителю, ссылки очищены.'))return;await task(async()=>{const r=await rpc('delete',state.config,{id:selected});remember('Удалён '+selected);state=r.state;selected=state.nodes.find(n=>n.id==='dead')?.id||state.nodes[0].id;adding=false;dirty=false;source='Локальный черновик';$('ruleSource').textContent=source;saveLocal();setWarnings(r.warnings);paint();status('Блок удалён из черновика. Для изменения схемы выполните пересчёт.','ok')})});
  $('ruleImport').addEventListener('click',()=>{if(abandon())$('ruleFile').click()});
  $('ruleFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;e.target.value='';await task(async()=>{const r=await rpc('import',state?.config||null,{file:f});if(state)remember('До импорта '+f.name);state=r.state;legacy=false;source=f.name;$('ruleSource').textContent=source;selected=state.nodes.some(n=>n.id===selected)?selected:state.nodes[0].id;adding=false;dirty=false;saveLocal();setWarnings(r.warnings);paint();status('Таблица импортирована в черновик. Проверьте замечания и пересчитайте реестр.','ok')})});
  $('ruleExport').addEventListener('click',async()=>{if(!await savePatch(false))return;await task(async()=>{const r=await rpc('export',state.config);window.FlowWorkspace.download(new Blob([r.bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),'Таблица правил NEON FLOW.xlsx');status('Таблица правил сформирована.','ok')})});
- $('ruleApply').addEventListener('click',async()=>{if(!await savePatch(false)||legacy||!state)return;if(warnings.some(x=>/^(Цикл расчёта|Источник ниже блока|Недействительная ссылка):/.test(x))){status('Сначала устраните ошибки расчётных связей, указанные в замечаниях.','error');return}if(warnings.length&&!confirm('У правил есть замечания. Применить сохранённую конфигурацию?'))return;dialog.close();options.apply(copy(state.config))});
+ $('ruleApply').addEventListener('click',async()=>{if(!await savePatch(false)||legacy||!state)return;if(warnings.some(x=>/^(Цикл расчёта|Источник ниже блока|Недействительная ссылка):/.test(x))){status('Сначала устраните ошибки расчётных связей, указанные в замечаниях.','error');return}if(warnings.length&&!confirm('У правил есть замечания. Применить сохранённую конфигурацию?'))return;const blank=state.nodes.filter(n=>options.isDraft?.(n.id)&&!n.data.c?.some(x=>x.r)&&!n.data.sub?.length);if(blank.length&&!confirm('У новых блоков нет собственных условий: '+blank.map(n=>n.t).join(', ')+'. Они будут структурными блоками без собственного показателя. Продолжить?'))return;dialog.close();options.apply(copy(state.config))});
  $('ruleUndo').addEventListener('click',async()=>{if(!history.length||!abandon())return;await task(async()=>{const h=history.at(-1),r=await rpc('read',h.config);history.pop();state=r.state;adding=false;dirty=false;selected=state.nodes.some(n=>n.id===selected)?selected:state.nodes[0].id;source='Восстановленная версия';$('ruleSource').textContent=source;saveLocal();setWarnings(r.warnings);paint();status('Последняя сохранённая правка отменена. Пересчитайте реестр для применения.','ok')})});
  $('ruleHistory').addEventListener('click',()=>{if($('ruleHistoryBox').hidden)historyView();else $('ruleHistoryBox').hidden=true});
- return{open}
+ return{open,quickParents,quickCreate,draftConfig}
 }
 window.FlowRules={create};
 })();
