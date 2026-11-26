@@ -131,7 +131,7 @@ function emptySingleAnalysis(s){
  return {beforeCount,afterCount,blockAdded,blockRemoved,blockAddedIds,blockRemovedIds,flows:[],newTotal:0,goneTotal:0,unchanged:0,ambiguous:0,ruleAffected:0,cleanMoves:0,missing:0,filterChanged:0,skipped:s.duplicate.size,addedRows:[],goneRows:[],ambiguousRows:[],ruleRows:[],source:s.file};
 }
 function syncCompareControls(){
- for(const el of $$('[data-mode="compare"],[data-action="compare"],[data-action="flows"],[data-action="ambiguous"],#playBtn,#detailBtn,#exportBtn,#focusFlows'))el.disabled=singleMode;
+ for(const el of $$('[data-mode="compare"],[data-action="compare"],[data-action="flows"],[data-action="ambiguous"],#playBtn,#summaryDownload,#summaryDownloadModal,#exportBtn,#focusFlows,#routesBtn'))el.disabled=singleMode;
  const both=[current,previous].filter(Boolean);
  $('#minAmt').disabled=both.some(s=>!Array.isArray(s.amt));
  $('#deathFilter').disabled=both.some(s=>!Array.isArray(s.dd));
@@ -228,7 +228,7 @@ function renderDiagram(reset=false){if(!analysis)return;structureMotionKey='';
  rebuildAttention();const frag=document.createDocumentFragment();addStructuralEdges();
  for(const n of nodes){const p=viewPositions[n.id];if(!p)continue;const b=document.createElement('button');b.type='button';b.className='node';b.style.left=p.x+'px';b.style.top=p.y+'px';b.style.setProperty('--c',colors[n.k]);b.dataset.id=n.id;if(canMoveCard(n.id)){b.classList.add('placement-card');b.setAttribute('aria-label',n.t+' · новый блок, можно переместить')}
  const a=analysis.afterCount[n.id],before=analysis.beforeCount[n.id],delta=a-before;const title=current?.labels?.[n.id]||n.t;const noRule=n.id!=="root"&&!current?.own?.[n.id]&&!current?.demo;
- const stat=currentStats[n.id]||{},issue=attentionMap.get(n.id);const shown=mapView==='debt'?(stat.known?compactMoney(stat.sum)+(stat.known<stat.count?'*':''):'—'):noRule?'—':fmt(a);b.innerHTML=`<div class="code">${esc(n.id)}</div><div class="node-name">${esc(title)}</div><div class="node-bottom"><span class="mini">${mapView==='debt'?'Долг, ₽':display==='compare'?'Было '+fmt(before):'Договоров'}</span><span class="count">${shown}</span></div>${display==='compare'&&(analysis.blockAdded[n.id]||analysis.blockRemoved[n.id])?`<span class="delta change-pair" title="Добавились / выбыли — уникальные ID, без дублей"><span class="plus">+${fmt(analysis.blockAdded[n.id])}</span><span class="minus">−${fmt(analysis.blockRemoved[n.id])}</span></span>`:''}`;
+ const stat=currentStats[n.id]||{},issue=attentionMap.get(n.id);const shown=mapView==='debt'?(stat.known?compactMoney(stat.sum)+(stat.known<stat.count?'*':''):'—'):noRule?'—':fmt(a);b.innerHTML=`<div class="code">${esc(n.id)}</div><div class="node-name">${esc(title)}</div><div class="node-bottom"><span class="mini">${mapView==='debt'?'Долг, ₽':display==='compare'?'Было '+fmt(before):'Договоров'}</span><span class="count">${shown}</span></div>${display==='compare'&&(analysis.blockAdded[n.id]||analysis.blockRemoved[n.id])?`<span class="delta change-pair" title="Пришли / ушли из блока — уникальные ID, без дублей; не обязательно переход между этапами"><span class="plus">${analysis.blockAdded[n.id]?'<i aria-hidden="true">↓</i>':''}+${fmt(analysis.blockAdded[n.id])}</span><span class="minus">${analysis.blockRemoved[n.id]?'<i aria-hidden="true">↑</i>':''}−${fmt(analysis.blockRemoved[n.id])}</span></span>`:''}`;
  if(issue&&mapView==='attention'){const mark=document.createElement('span');mark.className='node-attention';mark.textContent=issue[0].label;mark.title=issue.map(x=>x.label).join(' · ');b.appendChild(mark)}b.title=title+(currentStats[n.id]?.known?' · Долг '+fmt(Math.round(currentStats[n.id].sum))+' ₽':'')+(noRule?' · нет собственного условия расчёта':singleMode?' · строк '+fmt(a):' · было '+fmt(before)+' · стало '+fmt(a));b.addEventListener('click',()=>{if(!viewEdit)chooseNode(n.id,true)});b.addEventListener('dblclick',ev=>{ev.preventDefault();if(!viewEdit)focusBlock(n.id)});b.addEventListener('contextmenu',ev=>{ev.preventDefault();if(!viewEdit)openBlockMenu(ev,n.id)});if(canMoveCard(n.id))b.addEventListener('pointerdown',e=>startCardMove(e,n.id));b.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse'&&!draggingView){hoveredNode=n.id;highlight()}});b.addEventListener('pointerleave',()=>{if(hoveredNode===n.id){hoveredNode=null;highlight()}});frag.appendChild(b)}layer.appendChild(frag);
  if(display==='vertical'||display==='compare'){for(const {x,title:text} of LANES){const e=document.createElement('div');e.className='lane-head';e.style.left=(x+laneOffset.x)+'px';e.style.top=(562+laneOffset.y)+'px';e.textContent=text;layer.appendChild(e)}}
  $('#boardTitle').textContent=display==='graph'?'Полная схема':display==='compare'?'Сравнение реестров':'Вертикальный обзор';
@@ -286,9 +286,9 @@ function motionPacket(group,d,color,duration,offset,radius){
 }
 function syncStructuralMotion(target){
  const compare=display==='compare',premium=prefs.performance==='motion';
- const allowed=liveLinks&&!motionReduced()&&!draggingView&&!viewEdit&&!current?.empty&&(!compare||playing);
+ const allowed=liveLinks&&!motionReduced()&&!draggingView&&!viewEdit&&!current?.empty&&!compare;
  $('#liveLinksBtn').hidden=false;$('#liveLinksBtn').classList.toggle('on',liveLinks);$('#liveLinksBtn').setAttribute('aria-pressed',String(liveLinks));
- $('#motionHint').textContent=compare?'Зелёные — переходы по ID · голубые и янтарные — связи по правилам':'Световые импульсы показывают направление связей, не фактические переходы';
+ $('#motionHint').textContent=compare?'Зелёные линии — только подтверждённые переходы по ID':'Световые импульсы показывают направление связей, не фактические переходы';
  if(!allowed){removeStructureMotion();return}
  const edges=$$('.base-edge').filter(e=>!e.classList.contains('collapsed'));
  const near=edges.filter(e=>e.classList.contains('near'));
@@ -361,24 +361,23 @@ function badgeLocation(track,f,placed){
 }
 function renderCategories(){
  const box=$('#changeCategories');box.replaceChildren();
- const note=document.createElement('span');note.className='categories-caption';note.textContent='Другие изменения · все направления';box.appendChild(note);
+ const note=document.createElement('span');note.className='categories-caption';note.textContent='Категории · все направления';box.appendChild(note);
  for(const [name,rows,kind] of comparisonGroups()){
-  const n=rows?.length||0;if(!n)continue;const b=document.createElement('button');b.className='category-chip '+kind;b.innerHTML='<span>'+esc(name)+'</span> <b>'+fmt(n)+'</b>';b.addEventListener('click',()=>openRows(name,'Отдельная категория. Линия между блоками не строится без однозначного соответствия.',rows));box.appendChild(b);
+  const n=rows?.length||0;if(!n)continue;const b=document.createElement('button');b.className='category-chip '+kind;b.innerHTML='<span>'+esc(name)+'</span> <b>'+fmt(n)+'</b>';b.addEventListener('click',()=>{$('#routesDialog').close();openRows(name,'Отдельная категория. Линия между блоками не строится без однозначного соответствия.',rows)});box.appendChild(b);
  }
- if(box.children.length===1&&!analysis.missing){box.replaceChildren();return}
+ if(box.children.length===1&&!analysis.missing){note.textContent='Дополнительных изменений нет.';return}
  if(analysis.missing){const e=document.createElement('span');e.className='category-chip';e.textContent='Строк без ID: '+fmt(analysis.missing);e.title='Без идентификатора сравнить договор невозможно (оба файла)';box.appendChild(e)}
 }
 function showFlow(){
  svg.querySelectorAll('.movement-edge,.movement-glow,.movement-track,.marker,.click-edge,.route-defs,.cinematic-route,.map-route').forEach(x=>x.remove());badges.replaceChildren();mapPaths=[];
- const active=display==='compare'&&!singleMode;$('#motionPanel').hidden=!active;$('#routeStory').hidden=true;
- $('#playBtn').textContent=playing?'Ⅱ Движение':'▷ Движение';$('#playBtn').classList.toggle('on',playing);$('#playBtn').setAttribute('aria-pressed',String(playing));
+ const active=display==='compare'&&!singleMode;$('#motionPanel').hidden=!active;document.body.classList.toggle('compare-playing',active&&playing&&!motionReduced());
+ $('#playBtn').textContent=playing?'Ⅱ Пауза':'▷ Движение';$('#playBtn').classList.toggle('on',playing);$('#playBtn').setAttribute('aria-pressed',String(playing));
  $('#focusFlows').classList.toggle('on',focusOnly);$('#focusFlows').setAttribute('aria-pressed',String(focusOnly));
  if(!active){highlight();renderInspector();return}
- const routes=displayedRoutes(),f=routes.find(x=>x.key===activeRouteKey);
- $('#flowCount').textContent=fmt(routes.length)+' маршрутов · '+fmt(routes.reduce((s,f)=>s+f.count,0))+' ID'+(flowMetric==='debt'?' · '+fmt(Math.round(routes.reduce((s,f)=>s+(f.afterDebt||0),0)))+' ₽ известных сумм':'');
- $('#flowTitle').textContent=routes.length?('Все линии остаются на схеме. Нажмите линию или число для деталей.'+(routes.length>(prefs.performance==='motion'?100:24)?' Импульсы на крупнейших и выбранном маршруте; все стрелки видны.':'')):'Нет однозначных маршрутов в текущем представлении. Проверьте отдельные категории.';
- $('#flowTitle').title='Сравнение двух снимков, не события в реальном времени.';if(flowMetric==='debt')$('#flowTitle').textContent+=' Сумма на текущую дату; * — известна не для всех ID.';
- renderCategories();
+ const routes=displayedRoutes();
+ const included=routes.reduce((sum,r)=>sum+r.count,0);
+ $('#flowCount').textContent=routes.length?fmt(included)+' переходов · '+fmt(routes.length)+' маршрутов':'Нет подтверждённых переходов';
+ $('#flowCount').title='Показанные маршруты; полная разбивка — в сводке. Сравнение двух снимков, не события в реальном времени.';
  const defs=document.createElementNS(svgNS,'defs');defs.setAttribute('class','route-defs');
  for(const [id,c] of [['routeArrow','#95e5c9'],['routeArrowSelected','#e5fff5']]){
   const arrow=document.createElementNS(svgNS,'marker');for(const [k,v] of Object.entries({id,viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'10',markerHeight:'10',markerUnits:'userSpaceOnUse',orient:'auto'}))arrow.setAttribute(k,v);
@@ -400,16 +399,8 @@ function showFlow(){
   if(pt){const badge=document.createElement('button');badge.className='flowbadge map-badge'+(chosen?' focused':'');badge.dataset.key=route.key;badge.style.left=pt.x+'px';badge.style.top=pt.y+'px';badge.textContent='→ '+routeLabel(route);badge.title=t.textContent;badge.addEventListener('click',select);badges.appendChild(badge)}
   mapPaths.push(g)
  }
- if(f){$('#routeStory').hidden=false;updateRouteStory(f,id=>current?.labels?.[id]||byId[id]?.t||id)}
  highlight();renderInspector();
 }
-function updateRouteStory(f,label){
- $('#storyFrom').textContent=f.from+' · '+label(f.from);$('#storyTo').textContent=f.to+' · '+label(f.to);
- $('#storyMoved').textContent=fmt(f.count)+' договоров';
- $('#storyFromCount').textContent='Весь блок: '+fmt(analysis.beforeCount[f.from])+' → '+fmt(analysis.afterCount[f.from]);
- $('#storyToCount').textContent='Весь блок: '+fmt(analysis.beforeCount[f.to])+' → '+fmt(analysis.afterCount[f.to]);
-}
-
 function focusRoute(f){
  const a=viewPositions[f?.from],b=viewPositions[f?.to];if(!a||!b)return;
  const left=Math.min(a.x,b.x)-CARD_W/2-24,right=Math.max(a.x,b.x)+CARD_W/2+24,top=Math.min(a.y,b.y)-24,bottom=Math.max(a.y,b.y)+CARD_H+24;
@@ -417,16 +408,45 @@ function focusRoute(f){
  setScale(Math.max(.25,Math.min(scale,desired)));
  board.scrollTo({left:Math.max(0,(left+right)*scale/2-board.clientWidth/2),top:Math.max(0,(top+bottom)*scale/2-board.clientHeight/2),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
+function blockLabel(id){return current?.labels?.[id]||byId[id]?.t||id}
 function renderRouteList(){
- const list=$('#routesList'),q=$('#routeSearch').value.trim().toLowerCase();list.replaceChildren();const label=id=>current?.labels?.[id]||byId[id]?.t||id;
- for(const [i,f] of filteredFlows.entries()){
-  if(q&&!(f.from+' '+f.to+' '+label(f.from)+' '+label(f.to)).toLowerCase().includes(q))continue;
-  const b=document.createElement('button');b.className='flowrow route-option'+(f.key===activeRouteKey?' active':'');b.type='button';b.innerHTML='<span><span class="flowlist-title">'+esc(f.from)+' → '+esc(f.to)+'</span><span class="flowlist-sub">'+esc(label(f.from))+' → '+esc(label(f.to))+'</span></span><b>'+fmt(f.count)+'</b>';b.addEventListener('click',()=>{$('#routesDialog').close();selectFlow(i,true)});list.appendChild(b)
+ const list=$('#routesList'),q=$('#routeSearch').value.trim().toLowerCase();list.replaceChildren();
+ for(const f of analysis.flows){
+  if(q&&!(f.from+' '+f.to+' '+blockLabel(f.from)+' '+blockLabel(f.to)).toLowerCase().includes(q))continue;
+  const b=document.createElement('button');b.className='flowrow route-option'+(f.key===activeRouteKey?' active':'');b.type='button';b.innerHTML='<span><span class="flowlist-title">'+esc(blockLabel(f.from))+' → '+esc(blockLabel(f.to))+'</span><span class="flowlist-sub">'+esc(f.from)+' → '+esc(f.to)+'</span></span><b>'+fmt(f.count)+' ID</b>';
+  b.addEventListener('click',()=>{$('#routesDialog').close();if(branch!=='all')chooseBranch('all');if(flowLimit){flowLimit=0;$('#flowLimit').value='0'}selectFlow(filteredFlows.findIndex(x=>x.key===f.key),true)});list.appendChild(b)
  }
+ if(!list.children.length)list.textContent='Нет подходящих маршрутов.';
+}
+function summaryMetrics(){
+ return [['Перешли между блоками',analysis.cleanMoves,'move'],['Новые в реестре',analysis.newTotal,'new'],['Выбыли из реестра',analysis.goneTotal,'gone'],['Другие изменения',comparisonGroups().filter(x=>!['new','gone'].includes(x[2])).reduce((s,x)=>s+(x[1]?.length||0),0),'other']];
+}
+function summaryBlockRows(){
+ return nodeIds.filter(id=>analysis.blockAdded[id]||analysis.blockRemoved[id]||analysis.beforeCount[id]!==analysis.afterCount[id]).map(id=>[id,blockLabel(id),analysis.beforeCount[id]||0,analysis.afterCount[id]||0,analysis.blockAdded[id]||0,analysis.blockRemoved[id]||0]);
 }
 function openRoutes(){
- $('#routesSummary').textContent='По всем направлениям: '+fmt(analysis.cleanMoves)+' ID с однозначной сменой блоков. В списке: '+fmt(filteredFlows.length)+' маршрутов. Новые, выбывшие и неопределённые случаи вынесены отдельно.';
- $('#routeSearch').value='';renderRouteList();$('#routesDialog').showModal()
+ if(!analysis||singleMode)return;
+ $('#routesSummary').textContent=(analysis.source||'Сравнение реестров')+' · все направления, с учётом фильтров реестра (дубли — вне фильтра). Переходы определены по двум снимкам, не по времени события.';
+ const box=$('#summaryCards');box.replaceChildren();
+ for(const [label,count,kind] of summaryMetrics()){
+  const b=document.createElement('button');b.type='button';b.className='summary-stat '+kind;b.innerHTML='<small>'+esc(label)+'</small><strong>'+fmt(count)+'</strong><span>ID</span>';
+  b.addEventListener('click',()=>{if(kind==='move')$('#routeSearch').focus();else if(kind==='other')$('#changeCategories').closest('details').open=true;else{const group=comparisonGroups().find(x=>x[2]===kind);$('#routesDialog').close();openRows(group[0],'Изменение состава реестра по двум снимкам.',group[1]||[])}});box.appendChild(b)
+ }
+ const body=$('#summaryBlocks');body.replaceChildren();
+ for(const [id,label,before,after,arrived,left] of summaryBlockRows()){
+  const tr=document.createElement('tr');
+  [label+' · '+id,fmt(before),fmt(after),'+'+fmt(arrived),'−'+fmt(left)].forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===3)td.className='summary-plus';if(i===4)td.className='summary-minus';tr.appendChild(td)});body.appendChild(tr)
+ }
+ if(!body.children.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=5;td.textContent='Изменений состава блоков нет.';tr.appendChild(td);body.appendChild(tr)}
+ renderCategories();$('#routeSearch').value='';renderRouteList();$('#routesDialog').showModal()
+}
+async function downloadChangeSummary(){
+ if(!analysis||singleMode)return;
+ const metrics=[['Показатель','Количество / значение'],['Сравнение',analysis.source],['Область','Все направления, фильтры реестра; дубли — вне фильтра'],['Подтверждённые переходы',analysis.cleanMoves],...comparisonGroups().map(([name,rows])=>[name,rows?.length||0]),['Без ID (строк в обоих реестрах)',analysis.missing||0],['Без смены блока (ID)',analysis.unchanged||0],['Примечание','Переходы определены по двум снимкам, не по журналу событий. Блоки могут пересекаться.']];
+ const routes=[['ID блока до','Из блока','ID блока после','В блок','ID договоров','Долг до, ₽','Известны суммы до','Долг после, ₽','Известны суммы после'],...analysis.flows.map(f=>[f.from,blockLabel(f.from),f.to,blockLabel(f.to),f.count,f.beforeKnown?f.beforeDebt:'',f.beforeKnown,f.afterKnown?f.afterDebt:'',f.afterKnown])];
+ const blocks=[['ID блока','Блок','Было (строк)','Стало (строк)','Пришли (ID)','Ушли (ID)'],...summaryBlockRows()];
+ const buttons=[$('#summaryDownload'),$('#summaryDownloadModal')];buttons.forEach(b=>b.disabled=true);
+ try{await W.exportXlsx([{name:'Сводка',rows:metrics},{name:'Переходы',rows:routes},{name:'Блоки',rows:blocks}],'Сводка_изменений.xlsx')}catch(e){setStatus('Ошибка Excel: '+e.message)}finally{buttons.forEach(b=>b.disabled=singleMode)}
 }
 function flowsForBranch(){return analysis?.flows.filter(f=>branch==='all'||branchOf(f.from)===branch||branchOf(f.to)===branch)||[]}
 function syncFlows(){filteredFlows=flowsForBranch();flowIndex=Math.max(0,Math.min(filteredFlows.length-1,flowIndex));showFlow()}
@@ -440,7 +460,7 @@ function renderInspectorLegacy(){if(!analysis)return;const n=byId[selected],from
  $('#inspectorBody').innerHTML=h;attachBlockTools(n);$('#inspectorBody').querySelectorAll('[data-category]').forEach(b=>b.addEventListener('click',()=>{const item=comparisonGroups().find(x=>x[2]===b.dataset.category);if(item)openRows(item[0]+' · '+n.t,'Отдельные изменения состава, без предположения о маршруте.',groupRowsForNode(item[1],n.id))}));$('#inspectorBody').querySelector('[data-blockdetails]')?.addEventListener('click',()=>openBlockDetails(selected));$('#inspectorBody').querySelectorAll('[data-flowkey]').forEach(el=>el.addEventListener('click',()=>{const f=analysis.flows.find(x=>x.key===el.dataset.flowkey);if(!f)return;display='compare';setModeButtons();renderDiagram();let ix=filteredFlows.findIndex(x=>x.key===f.key);if(ix<0){branch='all';setBranchButtons();syncFlows();ix=filteredFlows.findIndex(x=>x.key===f.key)}selectFlow(ix);$('#inspector').classList.remove('open')}));}
 function setModeButtons(){$$('[data-mode]').forEach(b=>{b.classList.toggle('on',b.dataset.mode===display);b.setAttribute('aria-pressed',String(b.dataset.mode===display))});$$('[data-workspace]').forEach(b=>b.classList.toggle('active',b.dataset.workspace===(display==='compare'?'changes':'funnel')));document.body.dataset.mode=display;}
 function setBranchButtons(){$$('[data-branch]').forEach(b=>b.classList.toggle('active',b.dataset.branch===branch));}
-function setMode(m){if(viewEdit&&m!=='graph')cancelPlacement(false);if(linkMode&&m!=='graph'){linkMode=false;linkFrom=null}attentionOpen=false;if(singleMode&&m==='compare'){setStatus('Для сравнения требуется предыдущий реестр');return}display=m;setModeButtons();renderDiagram(true);if(m==='compare'){activeRouteKey=null;focusOnly=false;showFlow();fitZoom()}saveViewSoon()}
+function setMode(m){if(viewEdit&&m!=='graph')cancelPlacement(false);if(linkMode&&m!=='graph'){linkMode=false;linkFrom=null}attentionOpen=false;if(singleMode&&m==='compare'){setStatus('Для сравнения требуется предыдущий реестр');return}display=m;setModeButtons();renderDiagram(true);if(m==='compare'){activeRouteKey=null;focusOnly=false;$('#flowOptions').hidden=true;$('#flowAdvanced').setAttribute('aria-expanded','false');showFlow();fitZoom()}saveViewSoon()}
 function setStatus(s){$('#status').textContent=s}
 function openRows(title,note,rows,getAll){$('#detailsTitle').textContent=title;$('#detailsNote').textContent=note;detailAll=rows;detailPage=0;$('#detailSearch').value='';$('#detailSort').value='original';refreshDetailRows();if(!$('#detailsDialog').open)$('#detailsDialog').showModal();}
 function openFlowDetails(f){openRows(`Переход ${f.from} → ${f.to} · ${fmt(f.count)} ID`,'Однозначная смена принадлежности по двум снимкам. Промежуточные этапы и время движения неизвестны. Сумма по этим ID: было '+(f.beforeKnown?fmt(Math.round(f.beforeDebt))+' ₽ ('+fmt(f.beforeKnown)+' ID)':'—')+'; стало '+(f.afterKnown?fmt(Math.round(f.afterDebt))+' ₽ ('+fmt(f.afterKnown)+' ID)':'—')+'.',f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})),()=>f.ids.map(id=>({id,from:f.from,to:f.to,kind:'Однозначная смена блока'})));}
@@ -475,7 +495,7 @@ $('#zoomIn').addEventListener('click',()=>{pauseForManualNavigation();zoomAt(sca
 // Filters are committed together in the filter dialog.
 $('#playBtn').addEventListener('click',()=>{playing=!playing;showFlow()});$('#liveLinksBtn').addEventListener('click',()=>{liveLinks=!liveLinks;highlight()});$('#motionSpeed').addEventListener('change',e=>{motionSpeed=Math.max(.7,Math.min(2,Number(e.target.value)||1));showFlow()});$('#focusFlows').addEventListener('click',()=>{focusOnly=!focusOnly;activeRouteKey=null;showFlow()});$('#routesBtn').addEventListener('click',openRoutes);$('#inspectToggle').addEventListener('click',()=>$('#inspector').classList.toggle('open'));
 $('#routeSearch').addEventListener('input',renderRouteList);
-$('#detailBtn').addEventListener('click',()=>{const f=filteredFlows.find(x=>x.key===activeRouteKey);if(f)openFlowDetails(f)});$('#exportBtn').addEventListener('click',exportAll);$('#detailsCsv').addEventListener('click',()=>downloadRows(detailFiltered.map(enrichRow),'NEON_FLOW_детали.csv'));$('#closeInspector').addEventListener('click',()=>$('#inspector').classList.remove('open'));
+$('#summaryDownload').addEventListener('click',downloadChangeSummary);$('#summaryDownloadModal').addEventListener('click',downloadChangeSummary);$('#exportBtn').addEventListener('click',exportAll);$('#detailsCsv').addEventListener('click',()=>downloadRows(detailFiltered.map(enrichRow),'NEON_FLOW_детали.csv'));$('#closeInspector').addEventListener('click',()=>$('#inspector').classList.remove('open'));
 $('#loadBtn').addEventListener('click',()=>{$('#dataDialog').close();$('#uploadDialog').showModal()});$('#choosePrior').addEventListener('click',()=>$('#priorFile').click());$('#chooseCurrent').addEventListener('click',()=>$('#currentFile').click());$('#priorFile').addEventListener('change',e=>{if(e.target.files[0])loadChoice(e.target.files[0],'old')});$('#currentFile').addEventListener('change',e=>{if(e.target.files[0])loadChoice(e.target.files[0],'new')});$('#applyFiles').addEventListener('click',applyImports);$('#demoBtn').addEventListener('click',()=>{$('#dataDialog').close();turnDemo()});
 $$('[data-close]').forEach(b=>b.addEventListener('click',()=>$('#'+b.dataset.close).close()));
 window.addEventListener('keydown',e=>{if(e.key==='Escape')$('#inspector').classList.remove('open');if(e.target.closest('input,select,textarea,dialog,button'))return;const steps={ArrowLeft:[-160,0],ArrowRight:[160,0],ArrowUp:[0,-160],ArrowDown:[0,160]};if(steps[e.key]){e.preventDefault();pauseForManualNavigation();board.scrollLeft+=steps[e.key][0];board.scrollTop+=steps[e.key][1]}});
@@ -730,7 +750,7 @@ function paintDetailPage(){const pages=Math.max(1,Math.ceil(detailFiltered.lengt
 function openBlockMenu(ev,id){menu?.remove();menu=document.createElement('div');menu.className='block-menu';const items=[['Открыть блок',()=>focusBlock(id)],['Договоры',()=>openRows(byId[id].t,'Состав блока по текущей выборке.',blockRowsFor(id))],['Выгрузить Excel',()=>rowExport(blockRowsFor(id),'Блок_'+id+'.xlsx')],['Распределение',()=>{chooseNode(id,true);showDistribution(byId[id])}],['Правила',()=>rulesEditor.open(id)]];for(const [label,fn] of items){const b=document.createElement('button');b.textContent=label;b.addEventListener('click',()=>{menu?.remove();menu=null;fn()});menu.appendChild(b)}document.body.appendChild(menu);menu.style.left=Math.max(4,Math.min(ev.clientX,innerWidth-menu.offsetWidth-4))+'px';menu.style.top=Math.max(4,Math.min(ev.clientY,innerHeight-menu.offsetHeight-4))+'px'}
 $('#mapView').addEventListener('change',e=>{mapView=e.target.value;document.body.dataset.mapview=mapView;attentionOpen=false;if(mapView==='debt'){flowMetric='debt';$('#flowMetric').value='debt'}else{flowMetric='count';$('#flowMetric').value='count'}renderDiagram(false)});
 $('#attentionBtn').addEventListener('click',()=>{attentionOpen=true;mapView='attention';$('#mapView').value=mapView;document.body.dataset.mapview=mapView;renderDiagram(false);$('#inspector').classList.add('open');checkAttention()});
-$('#flowAdvanced').addEventListener('click',()=>{const open=$('#motionPanel').classList.toggle('advanced-open');$('#flowAdvanced').setAttribute('aria-expanded',String(open))});
+$('#flowAdvanced').addEventListener('click',()=>{const open=$('#flowOptions').hidden;$('#flowOptions').hidden=!open;$('#flowAdvanced').setAttribute('aria-expanded',String(open))});
 $('#detailSearch').addEventListener('input',()=>{clearTimeout(detailTimer);detailTimer=setTimeout(refreshDetailRows,200)});$('#detailSort').addEventListener('change',refreshDetailRows);$('#detailPrev').addEventListener('click',()=>{detailPage--;paintDetailPage()});$('#detailNext').addEventListener('click',()=>{detailPage++;paintDetailPage()});$('#detailsXlsx').addEventListener('click',()=>exportTable('Договоры_выборка.xlsx',['ID','Из блока','В блок','Сумма долга','Категория'],detailFiltered.map(raw=>{const r=enrichRow(raw);return[r.id,r.from,r.to,r.amount??'',r.kind]})).catch(e=>setStatus(e.message)));
 $('#perfMode').addEventListener('change',e=>{prefs.performance=e.target.value;W.savePrefs();structureMotionKey='';showFlow()});
 $('#pinInspector').addEventListener('click',()=>{prefs.pinInspector=!prefs.pinInspector;$('#pinInspector').setAttribute('aria-pressed',String(prefs.pinInspector));document.body.classList.toggle('inspector-pinned',prefs.pinInspector);W.savePrefs()});
